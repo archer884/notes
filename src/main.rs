@@ -32,7 +32,6 @@ fn score_map(map: ColorMap) -> Vec<(u32, u32)> {
         *map.entry(color).or_insert(0) += 1; 
         map
     }).into_iter().map(|(&a, b)| (a, b)).collect()
-    
 }
 
 fn build_map<R: BufRead>(reader: R) -> Result<ColorMap, CliError> {

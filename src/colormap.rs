@@ -1,21 +1,24 @@
 use field::Field;
 
 pub struct ColorMap {
+    width: usize,
+    height: usize,
     cells: Vec<Vec<u32>>
 }
 
 impl ColorMap {
     pub fn create(height: usize, width: usize) -> ColorMap {
         ColorMap {
-            cells: vec![
-                vec![0; height];
-                width
-            ],
+            width: width,
+            height: height,
+            cells: vec![ vec![0; height]; width ],
         }
     }
 
     pub fn add_field(&mut self, field: &Field) {
-        for (x, y) in field.coords() {
+        let max_y = self.height;
+        let max_x = self.width;
+        for (x, y) in field.coords().filter(|&(x, y)| x < max_x && y < max_y) {
             self.cells[x][y] = field.color;
         }
     }
