@@ -1,5 +1,5 @@
 pub struct Field {
-    pub color: u32,
+    pub color: u8,
     x: usize,
     y: usize,
     height: usize,

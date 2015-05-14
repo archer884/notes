@@ -27,7 +27,7 @@ fn main() {
     }
 }
 
-fn score_map(map: ColorMap) -> Vec<(u32, u32)> {
+fn score_map(map: ColorMap) -> Vec<(u8, u32)> {
     map.colors().fold(BTreeMap::new(), |mut map, color| { 
         *map.entry(color).or_insert(0) += 1; 
         map

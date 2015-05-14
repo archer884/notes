@@ -3,7 +3,7 @@ use field::Field;
 pub struct ColorMap {
     width: usize,
     height: usize,
-    cells: Vec<Vec<u32>>
+    cells: Vec<Vec<u8>>
 }
 
 impl ColorMap {
@@ -23,7 +23,7 @@ impl ColorMap {
         }
     }
 
-    pub fn colors<'a>(&'a self) -> Box<Iterator<Item=&u32> + 'a> {
+    pub fn colors<'a>(&'a self) -> Box<Iterator<Item=&u8> + 'a> {
         box self.cells.iter().flat_map(|row| row.iter())
     }
 }
