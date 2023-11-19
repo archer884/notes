@@ -37,7 +37,7 @@ impl InlineParser {
     }
 
     pub fn parse(&self, s: &str) -> Result<Inline, ParseInlineError> {
-        let s = s.trim_start_matches("<note ").trim_end_matches(">");
+        let s = s.trim_start_matches("<note ").trim_end_matches('>');
         let attributes = self.tag_parser.build_attribute_dict(s)?;
 
         // Our inline was a comment. This means we require a set of tags and, optionally, will
@@ -53,7 +53,9 @@ impl InlineParser {
 
             return Ok(Inline::Comment(Box::new(Comment {
                 tags,
-                heading: attributes.get(&Attribute::Heading).map(|s| s.into()),
+                heading: attributes
+                    .get(&Attribute::Heading)
+                    .map(|s| s.trim_matches('"').into()),
                 comment: comment.trim_matches('"').into(),
             })));
         }
@@ -72,7 +74,7 @@ impl InlineParser {
             })));
         }
 
-        return Err(ParseInlineError::UnknownType(s.into()));
+        Err(ParseInlineError::UnknownType(s.into()))
     }
 }
 

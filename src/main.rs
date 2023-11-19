@@ -1,7 +1,7 @@
 mod error;
 mod note;
 
-use std::{fs, process};
+use std::{fmt::Debug, fs, process};
 
 use clap::Parser;
 use note::{InlineParser, TagExtractor};
@@ -35,7 +35,7 @@ fn list_notes(extractor: &TagExtractor, parser: &InlineParser, path: &str) -> Re
     let inlines = tags.map(|tag| parser.parse(tag));
 
     for inline in inlines {
-        println!("{:?}", inline?);
+        println!("{:#?}", inline?);
     }
 
     Ok(())

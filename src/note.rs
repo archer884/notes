@@ -1,12 +1,23 @@
 mod parser;
 
+use std::fmt;
+
 pub use parser::{InlineParser, ParseInlineError};
 use regex::Regex;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Inline {
     Comment(Box<Comment>),
     Definition(Box<Definition>),
+}
+
+impl fmt::Debug for Inline {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Comment(comment) => comment.fmt(f),
+            Self::Definition(definition) => definition.fmt(f),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
