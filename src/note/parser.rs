@@ -107,7 +107,7 @@ impl FromStr for Attribute {
             "comment" => Ok(Attribute::Comment),
             "definition" => Ok(Attribute::Definition),
             "heading" => Ok(Attribute::Heading),
-            "tags" => Ok(Attribute::Tags),
+            "tag" | "tags" => Ok(Attribute::Tags),
             "term" => Ok(Attribute::Term),
             bad_attribute => Err(ParseInlineError::InvalidAttribute(bad_attribute.into())),
         }
