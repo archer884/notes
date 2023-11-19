@@ -22,15 +22,15 @@ impl fmt::Debug for Inline {
 
 #[derive(Clone, Debug)]
 pub struct Comment {
-    tags: Vec<String>,
-    heading: Option<String>,
-    comment: String,
+    pub tags: Vec<String>,
+    pub heading: Option<String>,
+    pub comment: String,
 }
 
 #[derive(Clone, Debug)]
 pub struct Definition {
-    term: String,
-    definition: String,
+    pub term: String,
+    pub definition: String,
 }
 
 pub struct TagExtractor {
