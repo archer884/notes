@@ -1,9 +1,18 @@
+mod configuration;
 mod error;
 mod note;
 
-use std::{collections::HashMap, fmt::Debug, fs, path::PathBuf, process};
+use std::{
+    collections::HashMap,
+    env,
+    fmt::Debug,
+    fs, io,
+    path::{Path, PathBuf},
+    process,
+};
 
 use clap::Parser;
+use configuration::{Cache, Configuration, Stash};
 use note::{Comment, Definition, Inline, InlineParser, TagExtractor};
 
 pub type Result<T, E = error::Error> = std::result::Result<T, E>;
@@ -16,15 +25,20 @@ pub type Result<T, E = error::Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Parser)]
 struct Args {
-    root: String,
     #[command(subcommand)]
-    command: Option<Command>,
+    command: Command,
 }
 
 #[derive(Debug, Parser)]
 enum Command {
+    Configure(Configure),
     Define(Define),
     Search(Search),
+}
+
+#[derive(Debug, Parser)]
+struct Configure {
+    root: String,
 }
 
 #[derive(Debug, Parser)]
@@ -50,6 +64,15 @@ fn main() {
 }
 
 fn run(args: Args) -> Result<()> {
+    match &args.command {
+        Command::Configure(cmd) => configure(&args, cmd),
+        Command::Define(cmd) => todo!(),
+        Command::Search(cmd) => todo!(),
+    }
+
+    let dir = env::current_dir()?;
+    let configuration = Configuration::load(&dir)?;
+
     let mut time = stopwatch::Stopwatch::start_new();
 
     // Rust has strict rules on ownership and borrowing of data. Ordinarily, adding a key/value
@@ -62,6 +85,7 @@ fn run(args: Args) -> Result<()> {
 
     // Note: when I write "dictionary," I mean "hashmap." I've been writing a lot of C# lately.
 
+    let (comments, definitions) = load_from_cache(&dir)?;
     let (definitions, comments) = load_from_path(&args)?;
 
     // Creating the definitions index is actually easy, since terms and definitions have a
@@ -106,6 +130,12 @@ fn run(args: Args) -> Result<()> {
     Ok(())
 }
 
+fn configure(args: &Args, command: &Configure) -> Result<()> {
+    let configuration = Configuration {
+        root: command.root.into(),
+    };
+}
+
 fn dispatch(command: &Command, index: &Index) {
     match command {
         Command::Define(Define { term }) => {
@@ -130,6 +160,12 @@ fn dispatch(command: &Command, index: &Index) {
             }
         }
     }
+}
+
+fn load_from_cache(
+    path: impl AsRef<Path>,
+) -> io::Result<(HashMap<String, Vec<String>>, HashMap<String, String>)> {
+    todo!()
 }
 
 fn build_comments_index(comments: &[Comment]) -> HashMap<&str, Vec<&str>> {
