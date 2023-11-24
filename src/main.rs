@@ -1,19 +1,27 @@
+mod cache;
 mod configuration;
 mod error;
+mod index;
 mod note;
 
 use std::{
-    collections::HashMap,
     env,
     fmt::Debug,
-    fs, io,
-    path::{Path, PathBuf},
+    fs,
+    io::{self, Read},
+    path::Path,
     process,
 };
 
+use cache::{CacheKey, FileCache};
 use clap::Parser;
-use configuration::{Cache, Configuration, Stash};
+use configuration::Configuration;
+use flate2::{bufread::GzEncoder, read::GzDecoder, Compression};
+use hashbrown::HashMap;
+use index::Index;
+use libsw::Sw;
 use note::{Comment, Definition, Inline, InlineParser, TagExtractor};
+use serde::{Deserialize, Serialize};
 
 pub type Result<T, E = error::Error> = std::result::Result<T, E>;
 
@@ -31,13 +39,13 @@ struct Args {
 
 #[derive(Debug, Parser)]
 enum Command {
-    Configure(Configure),
+    Config(Config),
     Define(Define),
     Search(Search),
 }
 
 #[derive(Debug, Parser)]
-struct Configure {
+struct Config {
     root: String,
 }
 
@@ -51,11 +59,6 @@ struct Search {
     tag: String,
 }
 
-struct Index<'a> {
-    definitions: HashMap<&'a str, &'a str>,
-    comments: HashMap<&'a str, Vec<&'a str>>,
-}
-
 fn main() {
     if let Err(e) = run(Args::parse()) {
         eprintln!("{e}");
@@ -64,155 +67,164 @@ fn main() {
 }
 
 fn run(args: Args) -> Result<()> {
-    match &args.command {
-        Command::Configure(cmd) => configure(&args, cmd),
-        Command::Define(cmd) => todo!(),
-        Command::Search(cmd) => todo!(),
-    }
-
     let dir = env::current_dir()?;
-    let configuration = Configuration::load(&dir)?;
+    match &args.command {
+        Command::Config(command) => config(&args, command, &dir),
+        Command::Define(command) => define(&args, command, &dir),
+        Command::Search(command) => search(&args, command, &dir),
+    }
+}
 
-    let mut time = stopwatch::Stopwatch::start_new();
+fn config(_args: &Args, command: &Config, directory: &Path) -> Result<()> {
+    let root = Path::new(&command.root);
+    let configuration = Configuration::from_command(command);
 
-    // Rust has strict rules on ownership and borrowing of data. Ordinarily, adding a key/value
-    // pair to a dictionary implies that both key and value are "owned" by the dictionary. We're
-    // not interested in that behavior at the moment, mostly because a given "comment" may be
-    // associated with an arbitrary number of "keys" (which in this case are actually "tags" from
-    // the document), and we have no interest in copying the same comment to each such entry in
-    // the dictionary. Rather, it seems a much better idea to associate pointers with dictionary
-    // keys in at least some cases.
+    let tool_path = directory.join(".tool");
+    let config_path = tool_path.join("notes.json");
+    fs::create_dir_all(&tool_path)?;
+    let s = serde_json::to_string_pretty(&configuration)?;
+    fs::write(config_path, s)?;
 
-    // Note: when I write "dictionary," I mean "hashmap." I've been writing a lot of C# lately.
+    let cache_path = tool_path.join("notecache.gzip");
+    let file_cache = build_file_cache(root, &cache_path)?;
+    let d = zip(file_cache)?;
+    fs::write(cache_path, d)?;
 
-    let (comments, definitions) = load_from_cache(&dir)?;
-    let (definitions, comments) = load_from_path(&args)?;
+    Ok(())
+}
 
-    // Creating the definitions index is actually easy, since terms and definitions have a
-    // one-to-one relationship.
+fn define(_args: &Args, command: &Define, directory: &Path) -> Result<()> {
+    // FIXME: UNFUCK!!!
+    eprintln!("WARNING: unfuck this code repetition");
+    let tool_path = directory.join(".tool");
+    let config_path = tool_path.join("notes.json");
+    let cache_path = tool_path.join("notecache.gzip");
 
-    let definitions_index: HashMap<&str, &str> = definitions
-        .iter()
-        .map(|x| (x.term.as_ref(), x.definition.as_ref()))
-        .collect();
+    let config: Configuration = unzip(&config_path)?;
+    let cache = build_file_cache(config.root.as_ref(), &cache_path)?;
 
-    // Creating the tagged comments index is a little more convoluted, because tags and comments do
-    // NOT have a one-to-one relationship.
-
-    let comments_index = build_comments_index(&comments);
-
-    // We are now ready to serve up data gathered directly from the "source code" of my novel!
-    // ...so I can stop the timer and we can report how long that took.
-
-    time.stop();
-    let elapsed = time.elapsed();
-    println!("data collected in {:.02} seconds", elapsed.as_secs_f64());
-
-    // For those of you who are not in on the joke, "seconds" is not the appropriate descriptor for
-    // how long this process is going to take. On modern hardware, even *hundredths* of seconds may
-    // not be sufficient.
-
-    let index = Index {
-        comments: comments_index,
-        definitions: definitions_index,
-    };
-
-    if let Some(command) = &args.command {
-        dispatch(command, &index);
-    } else {
-        println!(
-            "{} definitions\n{} comments",
-            definitions.len(),
-            comments.len()
-        );
+    if let Some(definition) = cache.define(&command.term) {
+        println!("{}: {definition}", command.term);
     }
 
     Ok(())
 }
 
-fn configure(args: &Args, command: &Configure) -> Result<()> {
-    let configuration = Configuration {
-        root: command.root.into(),
+fn search(_args: &Args, command: &Search, directory: &Path) -> Result<()> {
+    // FIXME: UNFUCK!!!
+    eprintln!("WARNING: unfuck this code repetition");
+    let tool_path = directory.join(".tool");
+    let config_path = tool_path.join("notes.json");
+    let cache_path = tool_path.join("notecache.gzip");
+
+    let config: Configuration = unzip(&config_path)?;
+    let cache = build_file_cache(config.root.as_ref(), &cache_path)?;
+
+    for comment in cache.search(&command.tag) {
+        // shitty proof of concept formatting
+        println!("\n{}", comment.comment);
+    }
+
+    Ok(())
+}
+
+fn build_file_cache(root: &Path, cache: &Path) -> Result<FileCache> {
+    let mut sw = Sw::new();
+    let cache = {
+        let _guard = sw.guard().unwrap();
+        let mut current = read_cache(cache)?;
+        let files = read_files(root)?;
+        let mut cache = HashMap::new();
+
+        for file in files {
+            if let Some(cached) = current.map.remove(&file) {
+                cache.insert(file, cached);
+            } else {
+                let index = index_from_path(&file.path)?;
+                cache.insert(file, index);
+            }
+        }
+        cache
     };
+
+    println!("cache time: {} ms", sw.elapsed().as_millis());
+    Ok(FileCache { map: cache })
 }
 
-fn dispatch(command: &Command, index: &Index) {
-    match command {
-        Command::Define(Define { term }) => {
-            if let Some(&entry) = index.definitions.get(&**term) {
-                println!("{term}: {entry}");
-            } else {
-                println!("{term} not found");
-                for &key in index.definitions.keys() {
-                    println!("{key}");
-                }
-            }
-        }
-        Command::Search(Search { tag }) => {
-            // This bare bones implementation fails to do anything with regard to formatting and
-            // headings and so forth.
-            if let Some(entries) = index.comments.get(&**tag) {
-                for &entry in entries {
-                    println!("{entry}\n");
-                }
-            } else {
-                println!("no entries found for {tag}");
-            }
-        }
+fn read_cache(path: &Path) -> io::Result<FileCache> {
+    if path.exists() {
+        unzip(path)
+    } else {
+        Ok(Default::default())
     }
 }
 
-fn load_from_cache(
-    path: impl AsRef<Path>,
-) -> io::Result<(HashMap<String, Vec<String>>, HashMap<String, String>)> {
-    todo!()
+fn read_files(path: &Path) -> io::Result<Vec<CacheKey>> {
+    Ok(fs::read_dir(path)?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            CacheKey::from_path(entry.path()).ok()
+        })
+        .collect())
 }
 
-fn build_comments_index(comments: &[Comment]) -> HashMap<&str, Vec<&str>> {
-    let mut map = HashMap::new();
-    let tagged_comments = comments
-        .iter()
-        .flat_map(|x| x.tags.iter().map(|tag| (tag, &x.comment)));
-
-    for (key, value) in tagged_comments {
-        map.entry(key.as_ref())
-            .or_insert_with(Vec::new)
-            .push(value.as_ref())
-    }
-    map
+fn zip<T: Serialize>(s: T) -> io::Result<Vec<u8>> {
+    let s = serde_json::to_vec(&s)?;
+    let mut buf = Vec::with_capacity(s.len());
+    let mut encoder = GzEncoder::new(&*s, Compression::fast());
+    encoder.read_to_end(&mut buf)?;
+    Ok(buf)
 }
 
-fn load_from_path(args: &Args) -> Result<(Vec<Definition>, Vec<Comment>)> {
+fn unzip<T>(path: &Path) -> io::Result<T>
+where
+    T: for<'a> Deserialize<'a>,
+{
+    let d = fs::read(path)?;
+    let mut buf = Vec::new();
+    let mut decoder = GzDecoder::new(&*d);
+    decoder.read_to_end(&mut buf)?;
+    Ok(serde_json::from_slice(&buf)?)
+}
+
+fn index_from_path(path: &Path) -> Result<Index> {
+    let (comments, definitions) = load_cd_from_path(path)?;
+    let comments = comments
+        .into_iter()
+        .flat_map(|c| c.tags.clone().into_iter().map(move |tag| (tag, c.clone())))
+        .fold(HashMap::new(), |mut a: HashMap<_, Vec<_>>, (k, v)| {
+            a.entry(k).or_default().push(v);
+            a
+        });
+    let definitions = definitions
+        .into_iter()
+        .map(|Definition { term, definition }| (term, definition))
+        .collect();
+    Ok(Index {
+        comments,
+        definitions,
+    })
+}
+
+fn load_cd_from_path(path: &Path) -> Result<(Vec<Comment>, Vec<Definition>)> {
+    // Be good to cache the extractor and parser instead of newing them up on each call--maybe turn
+    // this method into an object?
     let extractor = TagExtractor::new();
     let parser = InlineParser::new();
+
     let mut definitions = Vec::new();
     let mut comments = Vec::new();
 
-    for path in get_paths(&args.root)? {
-        let text = fs::read_to_string(path)?;
-        let tags = extractor.tags(&text);
-        let inlines: Result<Vec<_>, _> = tags.map(|tag| parser.parse(tag)).collect();
+    let text = fs::read_to_string(path)?;
+    let tags = extractor.tags(&text);
+    let inlines: Result<Vec<_>, _> = tags.map(|tag| parser.parse(tag)).collect();
 
-        for inline in inlines? {
-            match inline {
-                Inline::Comment(comment) => comments.push(*comment),
-                Inline::Definition(definition) => definitions.push(*definition),
-            }
+    for inline in inlines? {
+        match inline {
+            Inline::Comment(comment) => comments.push(*comment),
+            Inline::Definition(definition) => definitions.push(*definition),
         }
     }
-    Ok((definitions, comments))
-}
 
-fn get_paths(path: &str) -> Result<Vec<PathBuf>> {
-    let dir = fs::read_dir(path)?;
-    println!("ok...");
-    Ok(dir
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            let entry_type = entry.file_type().ok()?;
-            Some(entry)
-                .filter(|_| entry_type.is_file())
-                .map(|entry| entry.path())
-        })
-        .collect())
+    Ok((comments, definitions))
 }

@@ -6,6 +6,7 @@ use crate::note::ParseInlineError;
 pub enum Error {
     Io(io::Error),
     Parse(ParseInlineError),
+    Json(serde_json::Error),
 }
 
 impl From<io::Error> for Error {
@@ -20,11 +21,18 @@ impl From<ParseInlineError> for Error {
     }
 }
 
+impl From<serde_json::Error> for Error {
+    fn from(value: serde_json::Error) -> Self {
+        Self::Json(value)
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::Parse(e) => e.fmt(f),
             Error::Io(e) => e.fmt(f),
+            Error::Json(e) => e.fmt(f),
         }
     }
 }

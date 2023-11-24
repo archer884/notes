@@ -4,6 +4,7 @@ use std::fmt;
 
 pub use parser::{InlineParser, ParseInlineError};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone)]
 pub enum Inline {
@@ -20,7 +21,7 @@ impl fmt::Debug for Inline {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Comment {
     pub tags: Vec<String>,
     pub heading: Option<String>,
