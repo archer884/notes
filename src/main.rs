@@ -1,6 +1,7 @@
 mod cache;
 mod configuration;
 mod error;
+mod format;
 mod index;
 mod logging;
 mod note;
@@ -15,8 +16,9 @@ use std::{
 
 use cache::{CacheKey, FileCache};
 use clap::Parser;
-use configuration::{Configuration, ApplicationPaths};
-use flate2::{read::GzEncoder as Encoder, read::GzDecoder as Decoder, Compression};
+use configuration::{ApplicationPaths, Configuration};
+use flate2::{read::GzDecoder as Decoder, read::GzEncoder as Encoder, Compression};
+use format::Formatter;
 use hashbrown::HashMap;
 use index::Index;
 use libsw::Sw;
@@ -73,7 +75,7 @@ fn config(_args: &Args, command: &Config) -> Result<()> {
     let root = Path::new(&command.root);
     let configuration = Configuration::from_command(command);
     let paths = ApplicationPaths::from_current()?;
-    
+
     fs::create_dir_all(paths.tools())?;
     let s = serde_json::to_string_pretty(&configuration)?;
     fs::write(paths.config(), s)?;
@@ -91,7 +93,8 @@ fn define(_args: &Args, command: &Define) -> Result<()> {
     let cache = build_file_cache(config.root.as_ref(), paths.cache())?;
 
     if let Some(definition) = cache.define(&command.term) {
-        println!("{}: {definition}", command.term);
+        let formatter = Formatter::new();
+        formatter.fmt_definition(io::stdout().lock(), &command.term, definition)?;
     }
 
     Ok(())
@@ -101,10 +104,17 @@ fn search(_args: &Args, command: &Search) -> Result<()> {
     let paths = ApplicationPaths::from_current()?;
     let config = Configuration::load(paths.config())?;
     let cache = build_file_cache(config.root.as_ref(), paths.cache())?;
+    let formatter = Formatter::new();
 
-    for comment in cache.search(&command.tag) {
-        // shitty proof of concept formatting
-        println!("\n{}", comment.comment);
+    let mut comments = cache.search(&command.tag);
+
+    if let Some(comment) = comments.next() {
+        formatter.fmt_comment(io::stdout().lock(), comment)?;
+    }
+
+    for comment in comments {
+        println!();
+        formatter.fmt_comment(io::stdout().lock(), comment)?;
     }
 
     Ok(())
