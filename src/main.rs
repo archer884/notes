@@ -2,10 +2,10 @@ mod cache;
 mod configuration;
 mod error;
 mod index;
+mod logging;
 mod note;
 
 use std::{
-    env,
     fmt::Debug,
     fs,
     io::{self, Read},
@@ -15,8 +15,8 @@ use std::{
 
 use cache::{CacheKey, FileCache};
 use clap::Parser;
-use configuration::Configuration;
-use flate2::{bufread::GzEncoder, read::GzDecoder, Compression};
+use configuration::{Configuration, ApplicationPaths};
+use flate2::{read::GzEncoder as Encoder, read::GzDecoder as Decoder, Compression};
 use hashbrown::HashMap;
 use index::Index;
 use libsw::Sw;
@@ -24,12 +24,6 @@ use note::{Comment, Definition, Inline, InlineParser, TagExtractor};
 use serde::{Deserialize, Serialize};
 
 pub type Result<T, E = error::Error> = std::result::Result<T, E>;
-
-// This program really needs a better interface, but for right now I'm just going to provide it
-// with a root directory to read files from. However, for the future, I should note that the
-// following style of command works on Windows even though globbing files does not:
-//
-// notes (ls ~/foo/bar/baz*.txt)
 
 #[derive(Debug, Parser)]
 struct Args {
@@ -60,6 +54,7 @@ struct Search {
 }
 
 fn main() {
+    logging::initialize();
     if let Err(e) = run(Args::parse()) {
         eprintln!("{e}");
         process::exit(1);
@@ -67,41 +62,33 @@ fn main() {
 }
 
 fn run(args: Args) -> Result<()> {
-    let dir = env::current_dir()?;
     match &args.command {
-        Command::Config(command) => config(&args, command, &dir),
-        Command::Define(command) => define(&args, command, &dir),
-        Command::Search(command) => search(&args, command, &dir),
+        Command::Config(command) => config(&args, command),
+        Command::Define(command) => define(&args, command),
+        Command::Search(command) => search(&args, command),
     }
 }
 
-fn config(_args: &Args, command: &Config, directory: &Path) -> Result<()> {
+fn config(_args: &Args, command: &Config) -> Result<()> {
     let root = Path::new(&command.root);
     let configuration = Configuration::from_command(command);
-
-    let tool_path = directory.join(".tool");
-    let config_path = tool_path.join("notes.json");
-    fs::create_dir_all(&tool_path)?;
+    let paths = ApplicationPaths::from_current()?;
+    
+    fs::create_dir_all(paths.tools())?;
     let s = serde_json::to_string_pretty(&configuration)?;
-    fs::write(config_path, s)?;
+    fs::write(paths.config(), s)?;
 
-    let cache_path = tool_path.join("notecache.gzip");
-    let file_cache = build_file_cache(root, &cache_path)?;
+    let file_cache = build_file_cache(root, paths.cache())?;
     let d = zip(file_cache)?;
-    fs::write(cache_path, d)?;
+    fs::write(paths.cache(), d)?;
 
     Ok(())
 }
 
-fn define(_args: &Args, command: &Define, directory: &Path) -> Result<()> {
-    // FIXME: UNFUCK!!!
-    eprintln!("WARNING: unfuck this code repetition");
-    let tool_path = directory.join(".tool");
-    let config_path = tool_path.join("notes.json");
-    let cache_path = tool_path.join("notecache.gzip");
-
-    let config: Configuration = unzip(&config_path)?;
-    let cache = build_file_cache(config.root.as_ref(), &cache_path)?;
+fn define(_args: &Args, command: &Define) -> Result<()> {
+    let paths = ApplicationPaths::from_current()?;
+    let config = Configuration::load(paths.config())?;
+    let cache = build_file_cache(config.root.as_ref(), paths.cache())?;
 
     if let Some(definition) = cache.define(&command.term) {
         println!("{}: {definition}", command.term);
@@ -110,15 +97,10 @@ fn define(_args: &Args, command: &Define, directory: &Path) -> Result<()> {
     Ok(())
 }
 
-fn search(_args: &Args, command: &Search, directory: &Path) -> Result<()> {
-    // FIXME: UNFUCK!!!
-    eprintln!("WARNING: unfuck this code repetition");
-    let tool_path = directory.join(".tool");
-    let config_path = tool_path.join("notes.json");
-    let cache_path = tool_path.join("notecache.gzip");
-
-    let config: Configuration = unzip(&config_path)?;
-    let cache = build_file_cache(config.root.as_ref(), &cache_path)?;
+fn search(_args: &Args, command: &Search) -> Result<()> {
+    let paths = ApplicationPaths::from_current()?;
+    let config = Configuration::load(paths.config())?;
+    let cache = build_file_cache(config.root.as_ref(), paths.cache())?;
 
     for comment in cache.search(&command.tag) {
         // shitty proof of concept formatting
@@ -132,14 +114,17 @@ fn build_file_cache(root: &Path, cache: &Path) -> Result<FileCache> {
     let mut sw = Sw::new();
     let cache = {
         let _guard = sw.guard().unwrap();
-        let mut current = read_cache(cache)?;
         let files = read_files(root)?;
+        let mut current = read_cache(cache)?;
         let mut cache = HashMap::new();
 
         for file in files {
+            let path = file.path.display().to_string();
             if let Some(cached) = current.map.remove(&file) {
+                tracing::debug!(path, "cache hit");
                 cache.insert(file, cached);
             } else {
+                tracing::debug!(path, "cache miss");
                 let index = index_from_path(&file.path)?;
                 cache.insert(file, index);
             }
@@ -147,7 +132,8 @@ fn build_file_cache(root: &Path, cache: &Path) -> Result<FileCache> {
         cache
     };
 
-    println!("cache time: {} ms", sw.elapsed().as_millis());
+    let elapsed = sw.elapsed().as_millis();
+    tracing::debug!(elapsed, "cache time {elapsed} ms");
     Ok(FileCache { map: cache })
 }
 
@@ -171,7 +157,7 @@ fn read_files(path: &Path) -> io::Result<Vec<CacheKey>> {
 fn zip<T: Serialize>(s: T) -> io::Result<Vec<u8>> {
     let s = serde_json::to_vec(&s)?;
     let mut buf = Vec::with_capacity(s.len());
-    let mut encoder = GzEncoder::new(&*s, Compression::fast());
+    let mut encoder = Encoder::new(&*s, Compression::fast());
     encoder.read_to_end(&mut buf)?;
     Ok(buf)
 }
@@ -182,7 +168,7 @@ where
 {
     let d = fs::read(path)?;
     let mut buf = Vec::new();
-    let mut decoder = GzDecoder::new(&*d);
+    let mut decoder = Decoder::new(&*d);
     decoder.read_to_end(&mut buf)?;
     Ok(serde_json::from_slice(&buf)?)
 }
