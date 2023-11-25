@@ -22,7 +22,8 @@ impl Formatter {
 
     pub fn fmt_comment(&self, mut w: impl io::Write, comment: &Comment) -> io::Result<()> {
         if let Some(heading) = &comment.heading {
-            writeln!(w, "{}\n", heading.bold())?;
+            let text = textwrap::fill(heading, &self.options);
+            writeln!(w, "{}\n", text.bold())?;
         }
 
         let text = textwrap::fill(&comment.comment, &self.options);
@@ -38,7 +39,7 @@ impl Formatter {
     ) -> io::Result<()> {
         let term = term.bold();
         let text = textwrap::fill(definition, &self.options);
-        writeln!(w, "{text}:  {term}")
+        writeln!(w, "  {term}\n{text}")
     }
 }
 
