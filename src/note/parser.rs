@@ -25,6 +25,7 @@ impl fmt::Display for ParseInlineError {
 
 impl std::error::Error for ParseInlineError {}
 
+#[derive(Clone, Debug)]
 pub struct InlineParser {
     tag_parser: TagParser,
 }
@@ -114,6 +115,7 @@ impl FromStr for Attribute {
     }
 }
 
+#[derive(Clone, Debug)]
 struct TagParser {
     attribute_rx: Regex,
 }

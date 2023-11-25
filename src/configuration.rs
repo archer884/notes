@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::Config;
+use crate::cli::Config;
 
 #[derive(Debug)]
 pub struct ApplicationPaths {

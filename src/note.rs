@@ -34,6 +34,7 @@ pub struct Definition {
     pub definition: String,
 }
 
+#[derive(Clone, Debug)]
 pub struct TagExtractor {
     tag_rx: Regex,
 }

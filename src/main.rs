@@ -1,4 +1,5 @@
 mod cache;
+mod cli;
 mod configuration;
 mod error;
 mod format;
@@ -7,7 +8,6 @@ mod logging;
 mod note;
 
 use std::{
-    fmt::Debug,
     fs,
     io::{self, Read},
     path::Path,
@@ -15,45 +15,17 @@ use std::{
 };
 
 use cache::{CacheKey, FileCache};
-use clap::Parser;
+use cli::{Args, Command, Config, Define, Search};
 use configuration::{ApplicationPaths, Configuration};
 use flate2::{read::GzDecoder as Decoder, read::GzEncoder as Encoder, Compression};
 use format::Formatter;
 use hashbrown::HashMap;
-use index::Index;
 use libsw::Sw;
-use note::{Comment, Definition, Inline, InlineParser, TagExtractor};
 use serde::{Deserialize, Serialize};
 
+use crate::index::Indexer;
+
 pub type Result<T, E = error::Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Parser)]
-struct Args {
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Debug, Parser)]
-enum Command {
-    Config(Config),
-    Define(Define),
-    Search(Search),
-}
-
-#[derive(Debug, Parser)]
-struct Config {
-    root: String,
-}
-
-#[derive(Debug, Parser)]
-struct Define {
-    term: String,
-}
-
-#[derive(Debug, Parser)]
-struct Search {
-    tag: String,
-}
 
 fn main() {
     logging::initialize();
@@ -121,6 +93,7 @@ fn search(_args: &Args, command: &Search) -> Result<()> {
 }
 
 fn build_file_cache(root: &Path, cache: &Path) -> Result<FileCache> {
+    let indexer = Indexer::new();
     let mut sw = Sw::new();
     let cache = {
         let _guard = sw.guard().unwrap();
@@ -135,7 +108,7 @@ fn build_file_cache(root: &Path, cache: &Path) -> Result<FileCache> {
                 cache.insert(file, cached);
             } else {
                 tracing::debug!(path, "cache miss");
-                let index = index_from_path(&file.path)?;
+                let index = indexer.index_path(&file.path)?;
                 cache.insert(file, index);
             }
         }
@@ -181,46 +154,4 @@ where
     let mut decoder = Decoder::new(&*d);
     decoder.read_to_end(&mut buf)?;
     Ok(serde_json::from_slice(&buf)?)
-}
-
-fn index_from_path(path: &Path) -> Result<Index> {
-    let (comments, definitions) = load_cd_from_path(path)?;
-    let comments = comments
-        .into_iter()
-        .flat_map(|c| c.tags.clone().into_iter().map(move |tag| (tag, c.clone())))
-        .fold(HashMap::new(), |mut a: HashMap<_, Vec<_>>, (k, v)| {
-            a.entry(k).or_default().push(v);
-            a
-        });
-    let definitions = definitions
-        .into_iter()
-        .map(|Definition { term, definition }| (term, definition))
-        .collect();
-    Ok(Index {
-        comments,
-        definitions,
-    })
-}
-
-fn load_cd_from_path(path: &Path) -> Result<(Vec<Comment>, Vec<Definition>)> {
-    // Be good to cache the extractor and parser instead of newing them up on each call--maybe turn
-    // this method into an object?
-    let extractor = TagExtractor::new();
-    let parser = InlineParser::new();
-
-    let mut definitions = Vec::new();
-    let mut comments = Vec::new();
-
-    let text = fs::read_to_string(path)?;
-    let tags = extractor.tags(&text);
-    let inlines: Result<Vec<_>, _> = tags.map(|tag| parser.parse(tag)).collect();
-
-    for inline in inlines? {
-        match inline {
-            Inline::Comment(comment) => comments.push(*comment),
-            Inline::Definition(definition) => definitions.push(*definition),
-        }
-    }
-
-    Ok((comments, definitions))
 }
