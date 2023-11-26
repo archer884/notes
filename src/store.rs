@@ -11,7 +11,7 @@ use flate2::{
 use serde::{Deserialize, Serialize};
 
 pub fn zip<T: Serialize>(s: T) -> io::Result<Vec<u8>> {
-    let s = serde_json::to_vec(&s)?;
+    let s = bincode::serialize(&s).map_err(io::Error::other)?;
     let mut buf = Vec::with_capacity(s.len());
     let mut encoder = Encoder::new(&*s, Compression::fast());
     encoder.read_to_end(&mut buf)?;
@@ -26,5 +26,5 @@ where
     let mut buf = Vec::new();
     let mut decoder = Decoder::new(&*d);
     decoder.read_to_end(&mut buf)?;
-    Ok(serde_json::from_slice(&buf)?)
+    Ok(bincode::deserialize(&buf).map_err(io::Error::other)?)
 }
