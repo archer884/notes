@@ -6,22 +6,16 @@ mod format;
 mod index;
 mod logging;
 mod note;
+mod store;
 
-use std::{
-    fs,
-    io::{self, Read},
-    path::Path,
-    process,
-};
+use std::{fs, io, path::Path, process};
 
 use cache::{CacheKey, FileCache};
 use cli::{Args, Command, Config, Define, Search};
 use configuration::{ApplicationPaths, Configuration};
-use flate2::{read::GzDecoder as Decoder, read::GzEncoder as Encoder, Compression};
 use format::Formatter;
 use hashbrown::HashMap;
 use libsw::Sw;
-use serde::{Deserialize, Serialize};
 
 use crate::index::Indexer;
 
@@ -53,7 +47,7 @@ fn config(_args: &Args, command: &Config) -> Result<()> {
     fs::write(paths.config(), s)?;
 
     let file_cache = build_file_cache(root, paths.cache())?;
-    let d = zip(file_cache)?;
+    let d = store::zip(file_cache)?;
     fs::write(paths.cache(), d)?;
 
     Ok(())
@@ -122,7 +116,7 @@ fn build_file_cache(root: &Path, cache: &Path) -> Result<FileCache> {
 
 fn read_cache(path: &Path) -> io::Result<FileCache> {
     if path.exists() {
-        unzip(path)
+        store::unzip(path)
     } else {
         Ok(Default::default())
     }
@@ -135,23 +129,4 @@ fn read_files(path: &Path) -> io::Result<Vec<CacheKey>> {
             CacheKey::from_path(entry.path()).ok()
         })
         .collect())
-}
-
-fn zip<T: Serialize>(s: T) -> io::Result<Vec<u8>> {
-    let s = serde_json::to_vec(&s)?;
-    let mut buf = Vec::with_capacity(s.len());
-    let mut encoder = Encoder::new(&*s, Compression::fast());
-    encoder.read_to_end(&mut buf)?;
-    Ok(buf)
-}
-
-fn unzip<T>(path: &Path) -> io::Result<T>
-where
-    T: for<'a> Deserialize<'a>,
-{
-    let d = fs::read(path)?;
-    let mut buf = Vec::new();
-    let mut decoder = Decoder::new(&*d);
-    decoder.read_to_end(&mut buf)?;
-    Ok(serde_json::from_slice(&buf)?)
 }
