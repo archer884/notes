@@ -20,7 +20,7 @@ impl ApplicationPaths {
         let tools = dir.join(".tool");
         Ok(Self {
             config: tools.join("notes.json"),
-            cache: tools.join("notecache.json.gz"),
+            cache: tools.join("notecache.bin.gz"),
             tools,
         })
     }
