@@ -31,3 +31,5 @@ His gray horse gave a snort and an unhappy stamp of its hooves. The mare turned 
 The `config` subcommand will configure the program's behavior for your current working directory. Pass it the directory containing your source files.
 
 To get a definition, use `notes define <foo>` where "foo" is the word you're looking for. To view all the notes with a given tag, use `notes search <foo>`, where "foo" is the tag.
+
+Notes are parsed and cached in a directory called `.tool`, found in your current working directory (the one you were using when you used the config command). However, the cache is updated each time the modified time for a source file is updated, so you shouldn't need to worry about refreshing it.
