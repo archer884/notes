@@ -1,8 +1,7 @@
 use std::{
     fs, io,
-    ops::Add,
     path::{Path, PathBuf},
-    time::{Duration, SystemTime},
+    time::SystemTime,
 };
 
 use hashbrown::HashMap;
@@ -10,9 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{error::Error, index::Index, note::Comment};
 
-// FIXME: CacheKey requires a custom ser/de impl because the key of a json map must be a string.
-
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct CacheKey {
     pub path: PathBuf,
     pub modified: SystemTime,
@@ -32,43 +29,6 @@ impl CacheKey {
             path: path.into(),
             modified: meta.modified()?,
         })
-    }
-}
-
-impl Serialize for CacheKey {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let t = self
-            .modified
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap();
-        let s = t.as_secs();
-        let n = t.subsec_nanos();
-        let s = format!("{}::{s}::{n}", self.path.display());
-        s.serialize(serializer)
-    }
-}
-
-impl<'a> Deserialize<'a> for CacheKey {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'a>,
-    {
-        let s = String::deserialize(deserializer)?;
-        let segments: Vec<_> = s.split("::").collect();
-        if let &[path, s, n] = &*segments {
-            let s: u64 = s.parse().map_err(serde::de::Error::custom)?;
-            let n: u64 = n.parse().map_err(serde::de::Error::custom)?;
-            let d = Duration::from_secs(s) + Duration::from_nanos(n);
-            Ok(Self {
-                path: path.into(),
-                modified: SystemTime::UNIX_EPOCH.add(d),
-            })
-        } else {
-            Err(serde::de::Error::custom("bad format"))
-        }
     }
 }
 

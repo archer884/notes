@@ -26,5 +26,5 @@ where
     let mut buf = Vec::new();
     let mut decoder = Decoder::new(&*d);
     decoder.read_to_end(&mut buf)?;
-    Ok(bincode::deserialize(&buf).map_err(io::Error::other)?)
+    bincode::deserialize(&buf).map_err(io::Error::other)
 }
