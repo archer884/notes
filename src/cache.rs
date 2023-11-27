@@ -21,7 +21,7 @@ impl CacheKey {
         if !meta.is_file() {
             return Err(Error::Io(io::Error::new(
                 io::ErrorKind::NotFound,
-                "expected file",
+                "expected file, found directory or link",
             )));
         }
 
