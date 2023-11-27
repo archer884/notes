@@ -19,6 +19,10 @@ impl CacheKey {
     pub fn from_path(path: impl AsRef<Path> + Into<PathBuf>) -> crate::Result<Self> {
         let meta = fs::metadata(&path)?;
         if !meta.is_file() {
+            tracing::debug!(
+                path = path.as_ref().display().to_string(),
+                "path must reference file"
+            );
             return Err(Error::Io(io::Error::new(
                 io::ErrorKind::NotFound,
                 "expected file, found directory or link",

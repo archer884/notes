@@ -73,11 +73,9 @@ fn search(_args: &Args, command: &Search) -> Result<()> {
     let formatter = Formatter::new();
 
     let mut comments = cache.search(&command.tag);
-
     if let Some(comment) = comments.next() {
         formatter.fmt_comment(io::stdout().lock(), comment)?;
     }
-
     for comment in comments {
         println!();
         formatter.fmt_comment(io::stdout().lock(), comment)?;
@@ -96,12 +94,11 @@ fn build_file_cache(root: &Path, cache: &Path) -> Result<FileCache> {
         let mut cache = HashMap::new();
 
         for file in files {
-            let path = file.path.display().to_string();
             if let Some(cached) = current.map.remove(&file) {
-                tracing::debug!(path, "cache hit");
+                tracing::debug!(path = file.path.display().to_string(), "cache hit");
                 cache.insert(file, cached);
             } else {
-                tracing::debug!(path, "cache miss");
+                tracing::debug!(path = file.path.display().to_string(), "cache miss");
                 let index = indexer.index_path(&file.path)?;
                 cache.insert(file, index);
             }
@@ -109,8 +106,7 @@ fn build_file_cache(root: &Path, cache: &Path) -> Result<FileCache> {
         cache
     };
 
-    let elapsed = sw.elapsed().as_millis();
-    tracing::debug!(elapsed, "cache time {elapsed} ms");
+    tracing::debug!(elapsed = ?sw.elapsed(), "cache time");
     Ok(FileCache { map: cache })
 }
 
