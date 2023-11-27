@@ -58,7 +58,7 @@ fn define(_args: &Args, command: &Define) -> Result<()> {
     let config = Configuration::load(paths.config())?;
     let cache = build_file_cache(config.root.as_ref(), paths.cache())?;
 
-    if let Some(definition) = cache.define(&command.term) {
+    if let Some(definition) = cache.define(&command.term.to_ascii_lowercase()) {
         let formatter = Formatter::new();
         formatter.fmt_definition(io::stdout().lock(), &command.term, definition)?;
     }
@@ -72,7 +72,7 @@ fn search(_args: &Args, command: &Search) -> Result<()> {
     let cache = build_file_cache(config.root.as_ref(), paths.cache())?;
     let formatter = Formatter::new();
 
-    let mut comments = cache.search(&command.tag);
+    let mut comments = cache.search(&command.tag.to_ascii_lowercase());
     if let Some(comment) = comments.next() {
         formatter.fmt_comment(io::stdout().lock(), comment)?;
     }
