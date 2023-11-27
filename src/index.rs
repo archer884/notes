@@ -29,7 +29,11 @@ impl Indexer {
         let (comments, definitions) = self.read_inlines(path.as_ref())?;
         let comments = comments
             .into_iter()
-            .flat_map(|c| c.tags.clone().into_iter().map(move |tag| (tag, c.clone())))
+            .flat_map(|c| {
+                let normalized_tags: Vec<_> =
+                    c.tags.iter().map(|t| t.to_ascii_lowercase()).collect();
+                normalized_tags.into_iter().map(move |tag| (tag, c.clone()))
+            })
             .fold(HashMap::new(), |mut a: HashMap<_, Vec<_>>, (k, v)| {
                 a.entry(k).or_default().push(v);
                 a
@@ -37,7 +41,7 @@ impl Indexer {
 
         let definitions = definitions
             .into_iter()
-            .map(|Definition { term, definition }| (term, definition))
+            .map(|Definition { term, definition }| (term.to_ascii_lowercase(), definition))
             .collect();
 
         Ok(Index {
