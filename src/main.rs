@@ -15,7 +15,6 @@ use cli::{Args, Command, Config, Define, Search};
 use configuration::{ApplicationPaths, Configuration};
 use format::Formatter;
 use hashbrown::HashMap;
-use libsw::Sw;
 
 use crate::index::Indexer;
 
@@ -86,9 +85,8 @@ fn search(_args: &Args, command: &Search) -> Result<()> {
 
 fn build_file_cache(root: &Path, cache: &Path) -> Result<FileCache> {
     let indexer = Indexer::new();
-    let mut sw = Sw::new();
+    let time = chronograf::start();
     let cache = {
-        let _guard = sw.guard().unwrap();
         let files = read_files(root)?;
         let mut current = read_cache(cache)?;
         let mut cache = HashMap::new();
@@ -106,7 +104,8 @@ fn build_file_cache(root: &Path, cache: &Path) -> Result<FileCache> {
         cache
     };
 
-    tracing::debug!(elapsed = ?sw.elapsed(), "cache time");
+    let elapsed = time.finish();
+    tracing::debug!(elapsed = ?elapsed, "cache time");
     Ok(FileCache { map: cache })
 }
 
