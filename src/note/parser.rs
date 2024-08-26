@@ -10,7 +10,6 @@ pub struct InlineParser {
 impl InlineParser {
     pub fn new() -> Self {
         Self {
-            // #foo #bar_baz #define:saltare_temporum
             tags: Regex::new(r"#\S+").unwrap(),
         }
     }
@@ -20,7 +19,15 @@ impl InlineParser {
         let tags: Vec<_> = self
             .tags
             .captures_iter(s)
-            .filter_map(|cx| Some(cx.get(0)?.as_str().trim_start_matches('#').to_string()))
+            .filter_map(|cx| {
+                Some(
+                    cx.get(0)?
+                        .as_str()
+                        .trim_start_matches('#')
+                        .trim_end_matches(|u: char| !u.is_ascii_alphanumeric())
+                        .to_string(),
+                )
+            })
             .collect();
 
         Inline {
