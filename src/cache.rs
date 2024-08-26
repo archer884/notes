@@ -43,17 +43,12 @@ pub struct FileCache {
 }
 
 impl FileCache {
-    pub fn define(&self, term: &str) -> Option<&str> {
+    pub fn define(&self, term: &str) -> Option<&[Inline]> {
+        let term = normalize_term(term);
         self.map
             .values()
-            .filter_map(|x| x.comments.get(term))
-            .flat_map(|inlines| {
-                inlines
-                    .iter()
-                    .filter(|&x| x.tags.iter().any(|x| x == "definition"))
-            })
-            .map(|x| x.text.as_ref())
-            .next()
+            .find_map(|x| x.comments.get(&term))
+            .map(|inlines| inlines.as_ref())
     }
 
     pub fn search(&self, tag: &str) -> impl Iterator<Item = &Inline> {
@@ -65,4 +60,8 @@ impl FileCache {
         comments_by_file.sort_unstable_by(|a, b| a.0.modified.cmp(&b.0.modified));
         comments_by_file.into_iter().flat_map(|(_, c)| c)
     }
+}
+
+fn normalize_term(term: &str) -> String {
+    format!("define:{}", term.replace(' ', "_"))
 }

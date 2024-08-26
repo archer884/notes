@@ -57,9 +57,9 @@ fn define(_args: &Args, command: &Define) -> Result<()> {
     let config = Configuration::load(paths.config())?;
     let cache = build_file_cache(config.root.as_ref(), paths.cache())?;
 
-    if let Some(definition) = cache.define(&command.term.to_ascii_lowercase()) {
+    if let Some(definitions) = cache.define(&command.term) {
         let formatter = Formatter::new();
-        formatter.fmt_definition(io::stdout().lock(), &command.term, definition)?;
+        formatter.fmt_definition(io::stdout().lock(), &command.term, definitions)?;
     }
 
     Ok(())

@@ -12,18 +12,18 @@ pub struct Inline {
 
 #[derive(Clone, Debug)]
 pub struct TagExtractor {
-    tag_rx: Regex,
+    pattern: Regex,
 }
 
 impl TagExtractor {
     pub fn new() -> TagExtractor {
         Self {
-            tag_rx: Regex::new("<!-- (.+?) -->").unwrap(),
+            pattern: Regex::new("<!-- (.+?) -->").unwrap(),
         }
     }
 
     pub fn tags<'a>(&'a self, text: &'a str) -> impl Iterator<Item = &str> {
-        self.tag_rx
+        self.pattern
             .captures_iter(text)
             .flat_map(move |cx| cx.get(1))
             .map(|cx| cx.as_str())

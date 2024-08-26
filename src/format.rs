@@ -30,11 +30,19 @@ impl Formatter {
         &self,
         mut w: impl io::Write,
         term: &str,
-        definition: &str,
+        definitions: &[Inline],
     ) -> io::Result<()> {
-        let term = term.bold();
-        let text = textwrap::fill(definition, &self.options);
-        writeln!(w, "  {term}\n{text}")
+        writeln!(w, "{}", term.bold())?;
+
+        for definition in definitions {
+            writeln!(w)?;
+            let text = textwrap::wrap(&definition.text, &self.options);
+            for line in text {
+                writeln!(w, "{line}")?;
+            }
+        }
+
+        Ok(())
     }
 }
 

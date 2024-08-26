@@ -10,7 +10,8 @@ pub struct InlineParser {
 impl InlineParser {
     pub fn new() -> Self {
         Self {
-            tags: Regex::new(r"#[A-z0-9-_]+").unwrap(),
+            // #foo #bar_baz #define:saltare_temporum
+            tags: Regex::new(r"#\S+").unwrap(),
         }
     }
 

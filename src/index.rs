@@ -29,14 +29,8 @@ impl Indexer {
         let comments = comments
             .into_iter()
             .flat_map(|inline| {
-                let normalized_tags: Vec<_> = inline
-                    .tags
-                    .iter()
-                    .map(|t| {
-                        t.replace(|u| u == '-' || u == '_', " ")
-                            .to_ascii_lowercase()
-                    })
-                    .collect();
+                let normalized_tags: Vec<_> =
+                    inline.tags.iter().map(|t| t.to_ascii_lowercase()).collect();
                 normalized_tags
                     .into_iter()
                     .map(move |tag| (tag, inline.clone()))
