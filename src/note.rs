@@ -23,6 +23,9 @@ impl TagExtractor {
     }
 
     pub fn tags<'a>(&'a self, text: &'a str) -> impl Iterator<Item = &str> {
-        self.tag_rx.find_iter(text).map(move |cx| cx.as_str())
+        self.tag_rx
+            .captures_iter(text)
+            .flat_map(move |cx| cx.get(1))
+            .map(|cx| cx.as_str())
     }
 }
