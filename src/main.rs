@@ -71,7 +71,7 @@ fn search(_args: &Args, command: &Search) -> Result<()> {
     let cache = build_file_cache(config.root.as_ref(), paths.cache())?;
     let formatter = Formatter::new();
 
-    let mut comments = cache.search(&command.tag.to_ascii_lowercase());
+    let mut comments = cache.search(&command.tag);
     if let Some(comment) = comments.next() {
         formatter.fmt_comment(io::stdout().lock(), comment)?;
     }

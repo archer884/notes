@@ -52,10 +52,11 @@ impl FileCache {
     }
 
     pub fn search(&self, tag: &str) -> impl Iterator<Item = &Inline> {
+        let tag = normalize_term(tag);
         let mut comments_by_file: Vec<_> = self
             .map
             .iter()
-            .filter_map(|(f, i)| i.comments.get(tag).map(|comments| (f, comments)))
+            .filter_map(|(f, i)| i.comments.get(&tag).map(|comments| (f, comments)))
             .collect();
         comments_by_file.sort_unstable_by(|a, b| a.0.modified.cmp(&b.0.modified));
         comments_by_file.into_iter().flat_map(|(_, c)| c)

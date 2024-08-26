@@ -25,7 +25,7 @@ impl InlineParser {
                         .as_str()
                         .trim_start_matches('#')
                         .trim_end_matches(|u: char| !u.is_ascii_alphanumeric())
-                        .to_string(),
+                        .to_ascii_lowercase(),
                 )
             })
             .collect();
