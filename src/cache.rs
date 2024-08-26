@@ -52,7 +52,7 @@ impl FileCache {
     }
 
     pub fn search(&self, tag: &str) -> impl Iterator<Item = &Inline> {
-        let tag = normalize_term(tag);
+        let tag = tag.replace(' ', "_");
         let mut comments_by_file: Vec<_> = self
             .map
             .iter()
