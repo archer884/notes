@@ -7,7 +7,7 @@ use std::{
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::{error::Error, index::Index, note::Comment};
+use crate::{error::Error, index::Index, note::Inline};
 
 #[derive(Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct CacheKey {
@@ -46,11 +46,17 @@ impl FileCache {
     pub fn define(&self, term: &str) -> Option<&str> {
         self.map
             .values()
-            .find_map(|x| x.definitions.get(term))
-            .map(|x| x.as_ref())
+            .filter_map(|x| x.comments.get(term))
+            .flat_map(|inlines| {
+                inlines
+                    .iter()
+                    .filter(|&x| x.tags.iter().any(|x| x == "definition"))
+            })
+            .map(|x| x.text.as_ref())
+            .next()
     }
 
-    pub fn search(&self, tag: &str) -> impl Iterator<Item = &Comment> {
+    pub fn search(&self, tag: &str) -> impl Iterator<Item = &Inline> {
         let mut comments_by_file: Vec<_> = self
             .map
             .iter()

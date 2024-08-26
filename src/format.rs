@@ -4,7 +4,7 @@ use hyphenation::{Language, Load, Standard};
 use owo_colors::OwoColorize;
 use textwrap::{Options, WordSplitter};
 
-use crate::note::Comment;
+use crate::note::Inline;
 
 pub struct Formatter {
     options: Options<'static>,
@@ -20,13 +20,8 @@ impl Formatter {
         Self { options }
     }
 
-    pub fn fmt_comment(&self, mut w: impl io::Write, comment: &Comment) -> io::Result<()> {
-        if let Some(heading) = &comment.heading {
-            let text = textwrap::fill(heading, &self.options);
-            writeln!(w, "{}\n", text.bold())?;
-        }
-
-        let text = textwrap::fill(&comment.comment, &self.options);
+    pub fn fmt_comment(&self, mut w: impl io::Write, comment: &Inline) -> io::Result<()> {
+        let text = textwrap::fill(&comment.text, &self.options);
         writeln!(w, "{text}")?;
         Ok(())
     }

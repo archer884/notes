@@ -3,12 +3,11 @@ use std::{fs, path::Path};
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::note::{Comment, Definition, Inline, InlineParser, TagExtractor};
+use crate::note::{Inline, InlineParser, TagExtractor};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Index {
-    pub comments: HashMap<String, Vec<Comment>>,
-    pub definitions: HashMap<String, String>,
+    pub comments: HashMap<String, Vec<Inline>>,
 }
 
 #[derive(Clone, Debug)]
@@ -26,45 +25,27 @@ impl Indexer {
     }
 
     pub fn index_path(&self, path: impl AsRef<Path>) -> crate::Result<Index> {
-        let (comments, definitions) = self.read_inlines(path.as_ref())?;
+        let comments = self.read_inlines(path.as_ref())?;
         let comments = comments
             .into_iter()
-            .flat_map(|c| {
+            .flat_map(|inline| {
                 let normalized_tags: Vec<_> =
-                    c.tags.iter().map(|t| t.to_ascii_lowercase()).collect();
-                normalized_tags.into_iter().map(move |tag| (tag, c.clone()))
+                    inline.tags.iter().map(|t| t.to_ascii_lowercase()).collect();
+                normalized_tags
+                    .into_iter()
+                    .map(move |tag| (tag, inline.clone()))
             })
             .fold(HashMap::new(), |mut a: HashMap<_, Vec<_>>, (k, v)| {
                 a.entry(k).or_default().push(v);
                 a
             });
 
-        let definitions = definitions
-            .into_iter()
-            .map(|Definition { term, definition }| (term.to_ascii_lowercase(), definition))
-            .collect();
-
-        Ok(Index {
-            comments,
-            definitions,
-        })
+        Ok(Index { comments })
     }
 
-    fn read_inlines(&self, path: &Path) -> crate::Result<(Vec<Comment>, Vec<Definition>)> {
-        let mut definitions = Vec::new();
-        let mut comments = Vec::new();
-
+    fn read_inlines(&self, path: &Path) -> crate::Result<Vec<Inline>> {
         let text = fs::read_to_string(path)?;
         let tags = self.extract.tags(&text);
-        let inlines: Result<Vec<_>, _> = tags.map(|tag| self.parse.parse(tag)).collect();
-
-        for inline in inlines? {
-            match inline {
-                Inline::Comment(comment) => comments.push(*comment),
-                Inline::Definition(definition) => definitions.push(*definition),
-            }
-        }
-
-        Ok((comments, definitions))
+        Ok(tags.map(|tag| self.parse.parse(tag)).collect())
     }
 }
