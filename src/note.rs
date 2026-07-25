@@ -1,31 +1,34 @@
 mod parser;
 
-pub use parser::InlineParser;
-use regex::Regex;
-use serde::{Deserialize, Serialize};
+pub use parser::Parser;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Inline {
+use std::path::PathBuf;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Kind {
+    Note,
+    Fixme,
+    Define { term: String },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Note {
+    pub path: PathBuf,
+    pub line: usize,
+    pub kind: Kind,
     pub tags: Vec<String>,
     pub text: String,
 }
 
-#[derive(Clone, Debug)]
-pub struct TagExtractor {
-    pattern: Regex,
-}
-
-impl TagExtractor {
-    pub fn new() -> TagExtractor {
-        Self {
-            pattern: Regex::new("<!-- (.+?) -->").unwrap(),
-        }
+impl Note {
+    pub fn is_fixme(&self) -> bool {
+        matches!(self.kind, Kind::Fixme)
     }
 
-    pub fn tags<'a>(&'a self, text: &'a str) -> impl Iterator<Item = &str> {
-        self.pattern
-            .captures_iter(text)
-            .flat_map(move |cx| cx.get(1))
-            .map(|cx| cx.as_str())
+    pub fn search_text(&self) -> String {
+        match &self.kind {
+            Kind::Define { term } => format!("{term} {}", self.text),
+            _ => self.text.clone(),
+        }
     }
 }

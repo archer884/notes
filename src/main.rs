@@ -1,22 +1,19 @@
-mod cache;
 mod cli;
 mod configuration;
 mod error;
 mod format;
-mod index;
 mod logging;
 mod note;
+mod search;
 mod store;
+mod tui;
 
-use std::{fs, io, path::Path, process};
+use std::{io, process};
 
-use cache::{CacheKey, FileCache};
 use cli::{Args, Command, Config, Define, Search};
-use configuration::{ApplicationPaths, Configuration};
 use format::Formatter;
-use hashbrown::HashMap;
-
-use crate::index::Indexer;
+use search::FtsIndex;
+use store::NoteStore;
 
 pub type Result<T, E = error::Error> = std::result::Result<T, E>;
 
@@ -29,99 +26,102 @@ fn main() {
 }
 
 fn run(args: Args) -> Result<()> {
-    match &args.command {
-        Command::Config(command) => config(&args, command),
-        Command::Define(command) => define(&args, command),
-        Command::Search(command) => search(&args, command),
+    match args.command {
+        None | Some(Command::Tui) => cmd_tui(),
+        Some(Command::Config(cmd)) => cmd_config(cmd),
+        Some(Command::Define(cmd)) => cmd_define(cmd),
+        Some(Command::Search(cmd)) => cmd_search(cmd),
+        Some(Command::Errata) => cmd_errata(),
+        Some(Command::Glossary) => cmd_glossary(),
+        Some(Command::All) => cmd_all(),
     }
 }
 
-fn config(_args: &Args, command: &Config) -> Result<()> {
-    let root = Path::new(&command.root);
-    let configuration = Configuration::from_command(command);
-    let paths = ApplicationPaths::from_current()?;
-
-    fs::create_dir_all(paths.tools())?;
-    let s = serde_json::to_string_pretty(&configuration)?;
-    fs::write(paths.config(), s)?;
-
-    let file_cache = build_file_cache(root, paths.cache())?;
-    let d = store::zip(file_cache)?;
-    fs::write(paths.cache(), d)?;
-
-    Ok(())
+fn load_store() -> Result<NoteStore> {
+    let config = configuration::load_or_prompt()?;
+    NoteStore::load(&config.glob)
 }
 
-fn define(_args: &Args, command: &Define) -> Result<()> {
-    let paths = ApplicationPaths::from_current()?;
-    let config = Configuration::load(paths.config())?;
-    let cache = build_file_cache(config.root.as_ref(), paths.cache())?;
-
-    if let Some(definitions) = cache.define(&command.term) {
-        let formatter = Formatter::new();
-        formatter.fmt_definition(io::stdout().lock(), &command.term, definitions)?;
-    }
-
-    Ok(())
-}
-
-fn search(_args: &Args, command: &Search) -> Result<()> {
-    let paths = ApplicationPaths::from_current()?;
-    let config = Configuration::load(paths.config())?;
-    let cache = build_file_cache(config.root.as_ref(), paths.cache())?;
-    let formatter = Formatter::new();
-
-    let mut comments = cache.search(&command.tag);
-    if let Some(comment) = comments.next() {
-        formatter.fmt_comment(io::stdout().lock(), comment)?;
-    }
-    for comment in comments {
-        println!();
-        formatter.fmt_comment(io::stdout().lock(), comment)?;
-    }
-
-    Ok(())
-}
-
-fn build_file_cache(root: &Path, cache: &Path) -> Result<FileCache> {
-    let indexer = Indexer::new();
-    let time = chronograf::start();
-    let cache = {
-        let files = read_files(root)?;
-        let mut current = read_cache(cache)?;
-        let mut cache = HashMap::new();
-
-        for file in files {
-            if let Some(cached) = current.map.remove(&file) {
-                tracing::debug!(path = file.path.display().to_string(), "cache hit");
-                cache.insert(file, cached);
-            } else {
-                tracing::debug!(path = file.path.display().to_string(), "cache miss");
-                let index = indexer.index_path(&file.path)?;
-                cache.insert(file, index);
-            }
+fn cmd_config(cmd: Config) -> Result<()> {
+    match cmd.glob {
+        Some(glob) => {
+            let config = configuration::set_glob(glob)?;
+            println!("scan glob set to {:?}", config.glob);
         }
-        cache
+        None => match configuration::show_config()? {
+            Some((dir, config)) => {
+                println!("{}: {}", dir.display(), config.glob);
+            }
+            None => {
+                println!("no config for this directory; run `notes config <glob>`");
+            }
+        },
+    }
+    Ok(())
+}
+
+fn cmd_define(cmd: Define) -> Result<()> {
+    let store = load_store()?;
+    let notes = store.define(&cmd.term);
+    if notes.is_empty() {
+        eprintln!("no definition for {:?}", cmd.term);
+        return Ok(());
+    }
+    Formatter::new().fmt_notes(io::stdout().lock(), &notes)?;
+    Ok(())
+}
+
+fn cmd_search(cmd: Search) -> Result<()> {
+    let store = load_store()?;
+    let notes = if cmd.full_text {
+        let fts = FtsIndex::build(&store);
+        fts.search(&store, &cmd.query)
+    } else {
+        store.search_tag(&cmd.query)
     };
 
-    let elapsed = time.finish();
-    tracing::debug!(elapsed = ?elapsed, "cache time");
-    Ok(FileCache { map: cache })
-}
-
-fn read_cache(path: &Path) -> io::Result<FileCache> {
-    if path.exists() {
-        store::unzip(path)
-    } else {
-        Ok(Default::default())
+    if notes.is_empty() {
+        eprintln!("no notes matched {:?}", cmd.query);
+        return Ok(());
     }
+    Formatter::new().fmt_notes(io::stdout().lock(), &notes)?;
+    Ok(())
 }
 
-fn read_files(path: &Path) -> io::Result<Vec<CacheKey>> {
-    Ok(fs::read_dir(path)?
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            CacheKey::from_path(entry.path()).ok()
-        })
-        .collect())
+fn cmd_errata() -> Result<()> {
+    let store = load_store()?;
+    let notes = store.errata();
+    if notes.is_empty() {
+        eprintln!("no FIXME notes");
+        return Ok(());
+    }
+    Formatter::new().fmt_notes(io::stdout().lock(), &notes)?;
+    Ok(())
+}
+
+fn cmd_glossary() -> Result<()> {
+    let store = load_store()?;
+    let notes = store.glossary();
+    if notes.is_empty() {
+        eprintln!("no definitions");
+        return Ok(());
+    }
+    Formatter::new().fmt_glossary(io::stdout().lock(), &notes)?;
+    Ok(())
+}
+
+fn cmd_all() -> Result<()> {
+    let store = load_store()?;
+    let notes: Vec<_> = store.notes().iter().collect();
+    if notes.is_empty() {
+        eprintln!("no notes");
+        return Ok(());
+    }
+    Formatter::new().fmt_notes(io::stdout().lock(), &notes)?;
+    Ok(())
+}
+
+fn cmd_tui() -> Result<()> {
+    let store = load_store()?;
+    tui::run(store)
 }
