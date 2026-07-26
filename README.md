@@ -17,10 +17,9 @@ See Spot run. <!-- NOTE Spot is a dog. #character #bio -->
 
 - Must start with `NOTE` (after `<!--`).
 - Optional `#tags` anywhere in the body.
-- **Trailing** `#tags` (a run of tag tokens at the end) are hidden in display
-  output but still searchable.
-- **In-text** tags (e.g. `the #character arc`) stay in the text: the `#` is
-  dropped and the word is underlined.
+- All `#tags` render without the `#`, underlined when the terminal supports it.
+  Trailing tags are not stripped, so a sentence-final tag like `…his mother,
+  #Athrune.` is kept as prose.
 
 ### Definition
 
@@ -114,22 +113,23 @@ notes        # or: notes tui
 
 | Key | Action |
 |-----|--------|
-| `tab` | Focus tags ↔ notes |
+| `tab` | Focus left list ↔ notes |
 | `j` / `k` | Move in the focused list |
 | `enter` | Expand selected note (dialog) |
 | `y` | Yank note text to clipboard |
-| `/` | Filter tags |
+| `/` | Filter left list (tags or terms) |
 | `f` | Full-text search |
+| `g` | Toggle glossary mode (filter terms, show definitions) |
 | `e` | Show errata (FIXMEs) |
-| `q` / `esc` | Quit (or close dialog / clear override) |
+| `q` / `esc` | Quit (or close dialog / clear override / leave glossary) |
 
 In the detail dialog: `j`/`k` scroll, `y` yank, `enter`/`esc`/`q` close.
 
 ## Display rules
 
 - Tag lists and titles never show a leading `#`.
-- Trailing hashtag runs are omitted from rendered bodies.
-- In-text tags render without `#`, underlined when the terminal supports it.
+- All `#tags` render without `#`, underlined when the terminal supports it.
+- Markdown `*italic*` / `_italic_` and `**bold**` / `__bold__` are styled in CLI and TUI output.
 
 ## Development
 

@@ -15,7 +15,7 @@ use ratatui::{
     Frame, Terminal,
 };
 
-use crate::format::{body_for_display, plain_body, BodyWord};
+use crate::format::{plain_body, styled_words, BodyStyle};
 use crate::note::{Kind, Note};
 use crate::search::FtsIndex;
 use crate::store::NoteStore;
@@ -29,20 +29,29 @@ enum Mode {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Focus {
-    Tags,
+    Left,
     Notes,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Catalog {
+    Tags,
+    Glossary,
 }
 
 struct App {
     store: NoteStore,
     fts: FtsIndex,
     tags: Vec<String>,
-    tag_state: ListState,
+    /// Built on first `g` from store.by_term (already in memory).
+    terms: Option<Vec<String>>,
+    left_state: ListState,
     note_state: ListState,
     filter: String,
     fts_query: String,
     mode: Mode,
     focus: Focus,
+    catalog: Catalog,
     /// When set, right pane shows these note ids (FTS or errata)
     override_ids: Option<Vec<usize>>,
     status: String,
@@ -52,20 +61,22 @@ impl App {
     fn new(store: NoteStore) -> Self {
         let fts = FtsIndex::build(&store);
         let tags: Vec<String> = store.tags().into_iter().map(str::to_owned).collect();
-        let mut tag_state = ListState::default();
+        let mut left_state = ListState::default();
         if !tags.is_empty() {
-            tag_state.select(Some(0));
+            left_state.select(Some(0));
         }
         let mut app = Self {
             store,
             fts,
             tags,
-            tag_state,
+            terms: None,
+            left_state,
             note_state: ListState::default(),
             filter: String::new(),
             fts_query: String::new(),
             mode: Mode::Browse,
-            focus: Focus::Tags,
+            focus: Focus::Left,
+            catalog: Catalog::Tags,
             override_ids: None,
             status: String::new(),
         };
@@ -73,28 +84,50 @@ impl App {
         app
     }
 
-    fn filtered_tags(&self) -> Vec<&str> {
+    fn left_keys(&self) -> &[String] {
+        match self.catalog {
+            Catalog::Tags => &self.tags,
+            Catalog::Glossary => self.terms.as_deref().unwrap_or(&[]),
+        }
+    }
+
+    fn ensure_terms(&mut self) {
+        if self.terms.is_none() {
+            self.terms = Some(
+                self.store
+                    .terms()
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect(),
+            );
+        }
+    }
+
+    fn filtered_left(&self) -> Vec<&str> {
         let q = self.filter.to_ascii_lowercase();
-        self.tags
+        self.left_keys()
             .iter()
             .map(|s| s.as_str())
             .filter(|t| q.is_empty() || t.contains(&q))
             .collect()
     }
 
-    fn selected_tag(&self) -> Option<String> {
-        let tags = self.filtered_tags();
-        self.tag_state
+    fn selected_left(&self) -> Option<String> {
+        let keys = self.filtered_left();
+        self.left_state
             .selected()
-            .and_then(|i| tags.get(i).map(|s| (*s).to_owned()))
+            .and_then(|i| keys.get(i).map(|s| (*s).to_owned()))
     }
 
     fn current_notes(&self) -> Vec<&Note> {
         if let Some(ids) = &self.override_ids {
             return ids.iter().filter_map(|&id| self.store.get(id)).collect();
         }
-        match self.selected_tag() {
-            Some(tag) => self.store.search_tag(&tag),
+        match self.selected_left() {
+            Some(key) => match self.catalog {
+                Catalog::Tags => self.store.search_tag(&key),
+                Catalog::Glossary => self.store.define(&key),
+            },
             None => Vec::new(),
         }
     }
@@ -107,30 +140,40 @@ impl App {
         }
     }
 
-    fn select_next_tag(&mut self) {
-        let len = self.filtered_tags().len();
-        if len == 0 {
-            self.tag_state.select(None);
-            return;
+    fn reset_left_selection(&mut self) {
+        if self.filtered_left().is_empty() {
+            self.left_state.select(None);
+        } else {
+            self.left_state.select(Some(0));
         }
-        let i = self.tag_state.selected().map(|i| (i + 1) % len).unwrap_or(0);
-        self.tag_state.select(Some(i));
         self.override_ids = None;
         self.reset_note_selection();
     }
 
-    fn select_prev_tag(&mut self) {
-        let len = self.filtered_tags().len();
+    fn select_next_left(&mut self) {
+        let len = self.filtered_left().len();
         if len == 0 {
-            self.tag_state.select(None);
+            self.left_state.select(None);
+            return;
+        }
+        let i = self.left_state.selected().map(|i| (i + 1) % len).unwrap_or(0);
+        self.left_state.select(Some(i));
+        self.override_ids = None;
+        self.reset_note_selection();
+    }
+
+    fn select_prev_left(&mut self) {
+        let len = self.filtered_left().len();
+        if len == 0 {
+            self.left_state.select(None);
             return;
         }
         let i = self
-            .tag_state
+            .left_state
             .selected()
             .map(|i| if i == 0 { len - 1 } else { i - 1 })
             .unwrap_or(0);
-        self.tag_state.select(Some(i));
+        self.left_state.select(Some(i));
         self.override_ids = None;
         self.reset_note_selection();
     }
@@ -159,22 +202,22 @@ impl App {
 
     fn move_down(&mut self) {
         match self.focus {
-            Focus::Tags => self.select_next_tag(),
+            Focus::Left => self.select_next_left(),
             Focus::Notes => self.select_next_note(),
         }
     }
 
     fn move_up(&mut self) {
         match self.focus {
-            Focus::Tags => self.select_prev_tag(),
+            Focus::Left => self.select_prev_left(),
             Focus::Notes => self.select_prev_note(),
         }
     }
 
     fn toggle_focus(&mut self) {
         self.focus = match self.focus {
-            Focus::Tags => Focus::Notes,
-            Focus::Notes => Focus::Tags,
+            Focus::Left => Focus::Notes,
+            Focus::Notes => Focus::Left,
         };
     }
 
@@ -204,6 +247,27 @@ impl App {
         self.reset_note_selection();
     }
 
+    fn show_glossary(&mut self) {
+        self.ensure_terms();
+        self.catalog = Catalog::Glossary;
+        self.filter.clear();
+        self.fts_query.clear();
+        self.override_ids = None;
+        self.focus = Focus::Left;
+        self.reset_left_selection();
+        self.status.clear();
+    }
+
+    fn show_tags(&mut self) {
+        self.catalog = Catalog::Tags;
+        self.filter.clear();
+        self.fts_query.clear();
+        self.override_ids = None;
+        self.focus = Focus::Left;
+        self.reset_left_selection();
+        self.status.clear();
+    }
+
     fn selected_note(&self) -> Option<&Note> {
         let notes = self.current_notes();
         self.note_state.selected().and_then(|i| notes.get(i).copied())
@@ -229,13 +293,14 @@ impl App {
     }
 
     fn on_filter_changed(&mut self) {
-        if self.filtered_tags().is_empty() {
-            self.tag_state.select(None);
-        } else {
-            self.tag_state.select(Some(0));
+        self.reset_left_selection();
+    }
+
+    fn left_label(&self) -> &'static str {
+        match self.catalog {
+            Catalog::Tags => "tags",
+            Catalog::Glossary => "terms",
         }
-        self.override_ids = None;
-        self.reset_note_selection();
     }
 }
 
@@ -278,6 +343,8 @@ fn event_loop(
                         app.override_ids = None;
                         app.fts_query.clear();
                         app.reset_note_selection();
+                    } else if app.catalog == Catalog::Glossary {
+                        app.show_tags();
                     } else {
                         return Ok(());
                     }
@@ -299,6 +366,10 @@ fn event_loop(
                 KeyCode::Enter => app.open_detail(),
                 KeyCode::Char('y') => app.yank_selected(),
                 KeyCode::Char('e') => app.show_errata(),
+                KeyCode::Char('g') => match app.catalog {
+                    Catalog::Glossary => app.show_tags(),
+                    Catalog::Tags => app.show_glossary(),
+                },
                 _ => {}
             },
             Mode::Filter => match key.code {
@@ -379,9 +450,9 @@ fn ui(f: &mut Frame, app: &mut App) {
         Mode::Browse => {
             if app.status.is_empty() {
                 format!(
-                    " j/k move  tab focus ({})  enter expand  y yank  / filter  f fts  e errata  q quit ",
+                    " j/k move  tab focus ({})  enter expand  y yank  / filter  f fts  g glossary  e errata  q quit ",
                     match app.focus {
-                        Focus::Tags => "tags",
+                        Focus::Left => app.left_label(),
                         Focus::Notes => "notes",
                     }
                 )
@@ -389,7 +460,11 @@ fn ui(f: &mut Frame, app: &mut App) {
                 format!(" {} ", app.status)
             }
         }
-        Mode::Filter => format!(" filter tags: {}_  (Enter/Esc) ", app.filter),
+        Mode::Filter => format!(
+            " filter {}: {}_  (Enter/Esc) ",
+            app.left_label(),
+            app.filter
+        ),
         Mode::Fts => format!(" full-text: {}_  (Enter search, Esc cancel) ", app.fts_query),
         Mode::Detail { .. } => {
             if app.status.is_empty() {
@@ -406,7 +481,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Percentage(28), Constraint::Percentage(72)])
         .split(chunks[1]);
 
-    render_tags(f, app, body[0]);
+    render_left(f, app, body[0]);
     render_notes(f, app, body[1]);
 
     let preview = app
@@ -426,20 +501,21 @@ fn ui(f: &mut Frame, app: &mut App) {
     }
 }
 
-fn render_tags(f: &mut Frame, app: &mut App, area: Rect) {
+fn render_left(f: &mut Frame, app: &mut App, area: Rect) {
     let items: Vec<ListItem> = app
-        .filtered_tags()
+        .filtered_left()
         .into_iter()
         .map(|t| ListItem::new(Line::from(t.to_string())))
         .collect();
 
-    let focused = app.focus == Focus::Tags && matches!(app.mode, Mode::Browse);
+    let focused = app.focus == Focus::Left && matches!(app.mode, Mode::Browse);
+    let label = app.left_label();
     let title = if app.override_ids.is_some() {
-        " tags (override) "
+        format!(" {label} (override) ")
     } else if focused {
-        " tags * "
+        format!(" {label} * ")
     } else {
-        " tags "
+        format!(" {label} ")
     };
 
     let block = Block::default().borders(Borders::ALL).title(title);
@@ -453,7 +529,7 @@ fn render_tags(f: &mut Frame, app: &mut App, area: Rect) {
         .block(block)
         .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
-    f.render_stateful_widget(list, area, &mut app.tag_state);
+    f.render_stateful_widget(list, area, &mut app.left_state);
 }
 
 fn render_notes(f: &mut Frame, app: &mut App, area: Rect) {
@@ -463,7 +539,13 @@ fn render_notes(f: &mut Frame, app: &mut App, area: Rect) {
         .map(|n| {
             let kind = match &n.kind {
                 Kind::Fixme => "FIXME ".to_string(),
-                Kind::Define { term } => format!("def:{term} "),
+                Kind::Define { term } => {
+                    if app.catalog == Catalog::Glossary && app.override_ids.is_none() {
+                        String::new()
+                    } else {
+                        format!("def:{term} ")
+                    }
+                }
                 Kind::Note => String::new(),
             };
             let summary = truncate(&plain_body(&n.text), 72);
@@ -487,9 +569,9 @@ fn render_notes(f: &mut Frame, app: &mut App, area: Rect) {
                 format!(" notes (fts: {}) ", app.fts_query)
             }
         }
-        None => match app.selected_tag() {
-            Some(tag) if focused => format!(" notes ({tag}) * "),
-            Some(tag) => format!(" notes ({tag}) "),
+        None => match app.selected_left() {
+            Some(key) if focused => format!(" notes ({key}) * "),
+            Some(key) => format!(" notes ({key}) "),
             None if focused => " notes * ".to_string(),
             None => " notes ".to_string(),
         },
@@ -543,19 +625,29 @@ fn preview_lines(note: &Note) -> Vec<Line<'static>> {
 
 fn styled_body_line(text: &str) -> Line<'static> {
     let mut spans = Vec::new();
-    for (i, word) in body_for_display(text).into_iter().enumerate() {
+    for (i, word) in styled_words(text).into_iter().enumerate() {
         if i > 0 {
             spans.push(Span::raw(" "));
         }
-        match word {
-            BodyWord::Text(s) => spans.push(Span::raw(s)),
-            BodyWord::Tag(s) => spans.push(Span::styled(
-                s,
-                Style::default().add_modifier(Modifier::UNDERLINED),
-            )),
+        for (seg_text, seg_style) in word.segments {
+            spans.push(Span::styled(seg_text, tui_style(seg_style)));
         }
     }
     Line::from(spans)
+}
+
+fn tui_style(style: BodyStyle) -> Style {
+    let mut s = Style::default();
+    if style.bold {
+        s = s.add_modifier(Modifier::BOLD);
+    }
+    if style.italic {
+        s = s.add_modifier(Modifier::ITALIC);
+    }
+    if style.tag {
+        s = s.add_modifier(Modifier::UNDERLINED);
+    }
+    s
 }
 
 fn yank_text(note: &Note) -> String {

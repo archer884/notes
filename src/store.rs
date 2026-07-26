@@ -70,6 +70,12 @@ impl NoteStore {
         tags
     }
 
+    pub fn terms(&self) -> Vec<&str> {
+        let mut terms: Vec<_> = self.by_term.keys().map(|s| s.as_str()).collect();
+        terms.sort_unstable();
+        terms
+    }
+
     pub fn search_tag(&self, tag: &str) -> Vec<&Note> {
         let key = normalize_tag(tag);
         self.by_tag

@@ -35,14 +35,25 @@ Tags: `#\S+`, normalized lowercase; trailing non-alphanumeric stripped from tag 
 
 Source path + 1-based line number recorded on each `Note`.
 
-## Display body rules (`format::body_for_display`)
+## Display body rules (`format::body_for_display` / `styled_words`)
 
-1. Split on whitespace.
-2. Peel **trailing** tag tokens (`#…`) from the end — hidden in UI, still in `note.tags` / index.
-3. Remaining in-text `#tag` tokens → `BodyWord::Tag` (show without `#`, underline).
-4. Other words → `BodyWord::Text`.
+1. Parse inline markdown emphasis: `**`/`__` bold, `*`/`_` italic (nestable); unclosed markers stay literal.
+2. Every `#tag` token → tag style (no `#`, underline). Trailing tags are **not** stripped — a sentence-final tag like `…his mother, #Athrune.` is kept as prose. Only the tag name is underlined; trailing punctuation (e.g. the period) stays plain and attached with no gap. A `BodyWord` carries styled `segments` so a word can mix a tag name with plain punctuation.
+3. CLI and TUI apply bold / italic / underline from `BodyStyle`.
 
-Use `plain_body` for list rows and yank. Do not delete in-text tag words.
+Use `plain_body` for list rows and yank (markers and `#` removed).
+
+## Body wrapping (`format::wrap_words`)
+
+Greedy word wrap with end-of-line hyphenation via the `hyphenation` crate
+(`embed_en-us` feature, `Standard` dictionary built once in `Formatter::new`).
+A word that overflows its line is split at the largest dictionary-permitted
+opportunity, emitting a trailing `-`; uncappable words overflow whole. TUI
+preview/detail do not wrap (they scroll).
+
+## TUI glossary terms
+
+`by_term` is filled at store load. The sorted terms list for the left pane is built lazily on first `g`.
 
 ## Config
 
@@ -67,8 +78,10 @@ Doc id = note index as string. Query via `memory_indexer::InMemoryIndex`.
 
 ## TUI behavior
 
-- Focus: Tags | Notes (`tab`); `j`/`k` move focused pane.
-- `enter` → detail overlay (scroll, yank).
+- Catalog: Tags (default) or Glossary (`g`); Esc from glossary returns to tags.
+- Left pane: tags or terms; `/` filters the active left list.
+- Focus: Left | Notes (`tab`); `j`/`k` move focused pane.
+- `enter` → detail overlay (scroll, yank). Preview pane always shows selection.
 - `e` / FTS results set `override_ids` on the notes pane.
 - Clipboard yank: `arboard`.
 
