@@ -17,7 +17,7 @@ impl Parser {
             comment: Regex::new(r"(?s)<!--\s*(.*?)\s*-->").unwrap(),
             tags: Regex::new(r"#\S+").unwrap(),
             define: Regex::new(
-                r"(?i)^(?:def|define|definition)\s+(\S+)\s+(.+)$",
+                r#"(?i)^(?:def|define|definition)\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s+(.+)$"#,
             )
             .unwrap(),
         }
@@ -43,8 +43,13 @@ impl Parser {
             (Kind::Fixme, rest.trim().to_string())
         } else if eq_ignore_ascii_case(kind_label, "NOTE") {
             if let Some(cx) = self.define.captures(rest.trim()) {
-                let term = cx.get(1)?.as_str().to_ascii_lowercase();
-                let gloss = cx.get(2)?.as_str().trim().to_string();
+                let term = cx
+                    .get(1)
+                    .or(cx.get(2))
+                    .or(cx.get(3))?
+                    .as_str()
+                    .to_ascii_lowercase();
+                let gloss = cx.get(4)?.as_str().trim().to_string();
                 (Kind::Define { term }, gloss)
             } else {
                 (Kind::Note, rest.trim().to_string())
@@ -111,7 +116,11 @@ fn eq_ignore_ascii_case(a: &str, b: &str) -> bool {
 }
 
 fn line_number(source: &str, byte_offset: usize) -> usize {
-    source[..byte_offset].bytes().filter(|&b| b == b'\n').count() + 1
+    source[..byte_offset]
+        .bytes()
+        .filter(|&b| b == b'\n')
+        .count()
+        + 1
 }
 
 #[cfg(test)]
@@ -121,7 +130,11 @@ mod tests {
 
     fn parse_one(source: &str) -> Note {
         let notes = Parser::new().parse_file(Path::new("t.md"), source);
-        assert_eq!(notes.len(), 1, "expected one note in {source:?}, got {notes:?}");
+        assert_eq!(
+            notes.len(),
+            1,
+            "expected one note in {source:?}, got {notes:?}"
+        );
         notes.into_iter().next().unwrap()
     }
 
@@ -144,9 +157,7 @@ mod tests {
 
     #[test]
     fn parses_define_def() {
-        let n = parse_one(
-            "<!-- NOTE def spearsheaves a tax taken directly from the crop. -->",
-        );
+        let n = parse_one("<!-- NOTE def spearsheaves a tax taken directly from the crop. -->");
         assert_eq!(
             n.kind,
             Kind::Define {
@@ -161,6 +172,30 @@ mod tests {
         let n = parse_one("<!-- NOTE definition Foo bar baz -->");
         assert_eq!(n.kind, Kind::Define { term: "foo".into() });
         assert_eq!(n.text, "bar baz");
+    }
+
+    #[test]
+    fn parses_define_quoted_double() {
+        let n = parse_one(r#"<!-- NOTE def "the knives" the regular infantry branch -->"#);
+        assert_eq!(
+            n.kind,
+            Kind::Define {
+                term: "the knives".into()
+            }
+        );
+        assert_eq!(n.text, "the regular infantry branch");
+    }
+
+    #[test]
+    fn parses_define_quoted_single() {
+        let n = parse_one(r#"<!-- NOTE def 'the knives' the regular infantry branch -->"#);
+        assert_eq!(
+            n.kind,
+            Kind::Define {
+                term: "the knives".into()
+            }
+        );
+        assert_eq!(n.text, "the regular infantry branch");
     }
 
     #[test]

@@ -27,7 +27,7 @@ Body must begin with keyword:
 
 1. **`FIXME`** → `Kind::Fixme`, rest is text.
 2. **`NOTE`** then optional define form:
-   - `(?i)^(?:def|define|definition)\s+(\S+)\s+(.+)$` → `Kind::Define { term }` (term lowercased), gloss = text.
+   - `(?i)^(?:def|define|definition)\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s+(.+)$` → `Kind::Define { term }` (term lowercased), gloss = text. Term may be a bare word or a `"..."` / `'...'`-quoted phrase; quotes are stripped and not stored.
    - else → `Kind::Note`.
 3. Anything else → ignored.
 
