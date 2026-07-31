@@ -48,7 +48,8 @@ impl Parser {
                     .or(cx.get(2))
                     .or(cx.get(3))?
                     .as_str()
-                    .to_ascii_lowercase();
+                    .trim()
+                    .to_string();
                 let gloss = cx.get(4)?.as_str().trim().to_string();
                 (Kind::Define { term }, gloss)
             } else {
@@ -170,7 +171,7 @@ mod tests {
     #[test]
     fn parses_define_definition() {
         let n = parse_one("<!-- NOTE definition Foo bar baz -->");
-        assert_eq!(n.kind, Kind::Define { term: "foo".into() });
+        assert_eq!(n.kind, Kind::Define { term: "Foo".into() });
         assert_eq!(n.text, "bar baz");
     }
 
