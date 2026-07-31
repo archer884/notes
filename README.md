@@ -111,10 +111,13 @@ It indexes note bodies (and definition terms), not full source documents.
 notes        # or: notes tui
 ```
 
+The notes pane starts with all notes. Pick tags to narrow it down.
+
 | Key | Action |
 |-----|--------|
 | `tab` | Focus left list ↔ notes |
 | `j` / `k` | Move in the focused list |
+| `space` | Toggle the tag under the cursor (multi-select; notes must carry all picked tags) |
 | `enter` | Expand selected note (dialog) |
 | `y` | Yank note text to clipboard |
 | `/` | Filter left list (tags or terms) |

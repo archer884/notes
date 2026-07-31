@@ -82,9 +82,30 @@ impl NoteStore {
                 _ => None,
             })
             .collect();
-        terms.sort_by(|a, b| a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase()));
+        terms.sort_by_cached_key(|a| a.to_ascii_lowercase());
         terms.dedup();
         terms
+    }
+
+    /// Notes carrying ALL the given tags. Empty slice → every note.
+    pub fn search_tags(&self, tags: &[String]) -> Vec<&Note> {
+        let mut iter = tags.iter();
+        let Some(first) = iter.next() else {
+            return self.notes.iter().collect();
+        };
+        let mut ids = self
+            .by_tag
+            .get(&normalize_tag(first))
+            .cloned()
+            .unwrap_or_default();
+        ids.dedup();
+        for tag in iter {
+            let Some(set) = self.by_tag.get(&normalize_tag(tag)) else {
+                return Vec::new();
+            };
+            ids.retain(|id| set.binary_search(id).is_ok());
+        }
+        ids.into_iter().map(|id| &self.notes[id]).collect()
     }
 
     pub fn search_tag(&self, tag: &str) -> Vec<&Note> {
@@ -167,6 +188,16 @@ mod tests {
         }
     }
 
+    fn tagged_note(text: &str, tags: &[&str]) -> Note {
+        Note {
+            path: PathBuf::from("t.md"),
+            line: 1,
+            kind: Kind::Note,
+            tags: tags.iter().map(|t| (*t).to_string()).collect(),
+            text: text.into(),
+        }
+    }
+
     fn store_with(notes: Vec<Note>) -> NoteStore {
         let mut store = NoteStore::default();
         for n in notes {
@@ -224,5 +255,41 @@ mod tests {
     fn define_lookup_miss() {
         let store = store_with(vec![define_note("blue bear", "a large mammal.")]);
         assert!(store.define("red fox").is_empty());
+    }
+
+    #[test]
+    fn search_tags_empty_returns_all() {
+        let store = store_with(vec![tagged_note("one", &["a"]), tagged_note("two", &["b"])]);
+        let found = store.search_tags(&[]);
+        assert_eq!(found.len(), 2);
+    }
+
+    #[test]
+    fn search_tags_intersects() {
+        let store = store_with(vec![
+            tagged_note("one", &["a", "b"]),
+            tagged_note("two", &["a"]),
+            tagged_note("three", &["b"]),
+            tagged_note("four", &["a", "b", "c"]),
+        ]);
+        let tags = vec!["a".to_string(), "b".to_string()];
+        let found = store.search_tags(&tags);
+        let texts: Vec<&str> = found.iter().map(|n| n.text.as_str()).collect();
+        assert_eq!(texts, vec!["one", "four"]);
+    }
+
+    #[test]
+    fn search_tags_missing_tag_returns_none() {
+        let store = store_with(vec![tagged_note("one", &["a"])]);
+        let tags = vec!["a".to_string(), "zzz".to_string()];
+        assert!(store.search_tags(&tags).is_empty());
+    }
+
+    #[test]
+    fn search_tags_normalizes_and_dedups() {
+        let store = store_with(vec![tagged_note("one", &["a", "a"])]);
+        let tags = vec!["#A".to_string()];
+        let found = store.search_tags(&tags);
+        assert_eq!(found.len(), 1);
     }
 }

@@ -80,6 +80,8 @@ Doc id = note index as string. Query via `memory_indexer::InMemoryIndex`.
 
 - Catalog: Tags (default) or Glossary (`g`); Esc from glossary returns to tags.
 - Left pane: tags or terms; `/` filters the active left list.
+- Tags catalog: notes pane starts with ALL notes; `space` toggles the tag under the cursor (`[x]` marks). Notes are filtered by ALL picked tags (intersection via `store.search_tags`), shrinking as tags are added. Picked tags persist across `/` filter and glossary switches; the notes title shows `all` or the picked `#tags`.
+- Glossary catalog: cursor-selected term drives the notes pane (unchanged single-select).
 - Focus: Left | Notes (`tab`); `j`/`k` move focused pane.
 - `enter` → detail overlay (scroll, yank). Preview pane always shows selection.
 - `e` / FTS results set `override_ids` on the notes pane.
