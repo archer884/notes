@@ -31,7 +31,7 @@ Body must begin with keyword:
    - else → `Kind::Note`.
 3. Anything else → ignored.
 
-Tags: `#\S+`, normalized lowercase; trailing non-alphanumeric stripped from tag name.
+Tags: `#\S+`, trailing non-alphanumeric stripped from tag name; original casing kept on `Note.tags`. Store indexes `by_tag` under `normalize_tag` (trim, strip `#`, spaces→`_`, lowercase) so lookup is case- and space/underscore-insensitive; `tags()` returns first-seen original forms, deduped by that key.
 
 Source path + 1-based line number recorded on each `Note`.
 

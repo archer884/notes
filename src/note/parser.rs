@@ -101,12 +101,11 @@ fn extract_tags(pattern: &Regex, text: &str) -> Vec<String> {
             let raw = cx.get(0)?.as_str();
             let tag = raw
                 .trim_start_matches('#')
-                .trim_end_matches(|u: char| !u.is_ascii_alphanumeric())
-                .to_ascii_lowercase();
+                .trim_end_matches(|u: char| !u.is_ascii_alphanumeric());
             if tag.is_empty() {
                 None
             } else {
-                Some(tag)
+                Some(tag.to_string())
             }
         })
         .collect()
@@ -217,5 +216,11 @@ mod tests {
         let n = parse_one("<!-- FIXME broken #errata #plot -->");
         assert!(n.is_fixme());
         assert_eq!(n.tags, vec!["errata", "plot"]);
+    }
+
+    #[test]
+    fn tag_casing_preserved() {
+        let n = parse_one("<!-- NOTE hero of the #Empire. #Foo_Bar -->");
+        assert_eq!(n.tags, vec!["Empire", "Foo_Bar"]);
     }
 }

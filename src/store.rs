@@ -1,4 +1,8 @@
-use std::{collections::HashMap, fs, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::Path,
+};
 
 use glob::glob;
 
@@ -46,7 +50,10 @@ impl NoteStore {
         let id = self.notes.len();
 
         for tag in &note.tags {
-            self.by_tag.entry(tag.clone()).or_default().push(id);
+            self.by_tag
+                .entry(normalize_tag(tag))
+                .or_default()
+                .push(id);
         }
 
         if let Kind::Define { term } = &note.kind {
@@ -68,8 +75,16 @@ impl NoteStore {
     }
 
     pub fn tags(&self) -> Vec<&str> {
-        let mut tags: Vec<_> = self.by_tag.keys().map(|s| s.as_str()).collect();
-        tags.sort_unstable();
+        let mut seen = HashSet::new();
+        let mut tags = Vec::new();
+        for note in &self.notes {
+            for tag in &note.tags {
+                if seen.insert(normalize_tag(tag)) {
+                    tags.push(tag.as_str());
+                }
+            }
+        }
+        tags.sort_by_cached_key(|t| normalize_tag(t));
         tags
     }
 
@@ -291,5 +306,36 @@ mod tests {
         let tags = vec!["#A".to_string()];
         let found = store.search_tags(&tags);
         assert_eq!(found.len(), 1);
+    }
+
+    #[test]
+    fn search_tag_spaces_and_underscores_interchangeable() {
+        let store = store_with(vec![
+            tagged_note("under", &["foo_bar"]),
+            tagged_note("space", &["foo bar"]),
+            tagged_note("other", &["baz"]),
+        ]);
+        for query in ["foo_bar", "foo bar", "Foo Bar", "#foo_bar"] {
+            let found = store.search_tag(query);
+            let texts: Vec<&str> = found.iter().map(|n| n.text.as_str()).collect();
+            assert_eq!(texts, vec!["under", "space"], "query {query:?}");
+        }
+        let tags = vec!["foo bar".to_string()];
+        let found = store.search_tags(&tags);
+        let texts: Vec<&str> = found.iter().map(|n| n.text.as_str()).collect();
+        assert_eq!(texts, vec!["under", "space"]);
+    }
+
+    #[test]
+    fn tags_list_preserves_casing_dedupes_normalized() {
+        let store = store_with(vec![
+            tagged_note("a", &["Foo Bar"]),
+            tagged_note("b", &["foo_bar"]),
+            tagged_note("c", &["Baz"]),
+            tagged_note("d", &["#baz"]),
+        ]);
+        assert_eq!(store.tags(), vec!["Baz", "Foo Bar"]);
+        assert_eq!(store.search_tag("foo_bar").len(), 2);
+        assert_eq!(store.search_tag("BAZ").len(), 2);
     }
 }

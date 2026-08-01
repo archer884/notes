@@ -102,11 +102,11 @@ impl App {
     }
 
     fn filtered_left(&self) -> Vec<&str> {
-        let q = self.filter.to_ascii_lowercase();
+        let q = normalize_tag_filter(&self.filter);
         self.left_keys()
             .iter()
             .map(|s| s.as_str())
-            .filter(|t| q.is_empty() || t.contains(&q))
+            .filter(|t| q.is_empty() || normalize_tag_filter(t).contains(&q))
             .collect()
     }
 
@@ -702,6 +702,13 @@ fn tui_style(style: BodyStyle) -> Style {
         s = s.add_modifier(Modifier::UNDERLINED);
     }
     s
+}
+
+fn normalize_tag_filter(s: &str) -> String {
+    s.trim()
+        .trim_start_matches('#')
+        .replace(' ', "_")
+        .to_ascii_lowercase()
 }
 
 fn yank_text(note: &Note) -> String {
