@@ -26,6 +26,7 @@ enum Mode {
     Filter,
     Fts,
     Detail { scroll: u16 },
+    Help,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -38,6 +39,18 @@ enum Focus {
 enum Catalog {
     Tags,
     Glossary,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OverrideKind {
+    Fts,
+    Errata,
+    Pending,
+}
+
+struct Override {
+    kind: OverrideKind,
+    ids: Vec<usize>,
 }
 
 struct App {
@@ -55,8 +68,8 @@ struct App {
     mode: Mode,
     focus: Focus,
     catalog: Catalog,
-    /// When set, right pane shows these note ids (FTS or errata)
-    override_ids: Option<Vec<usize>>,
+    /// When set, right pane shows these note ids (FTS, errata, or pending)
+    override_state: Option<Override>,
     status: String,
 }
 
@@ -81,7 +94,7 @@ impl App {
             mode: Mode::Browse,
             focus: Focus::Left,
             catalog: Catalog::Tags,
-            override_ids: None,
+            override_state: None,
             status: String::new(),
         };
         app.reset_note_selection();
@@ -118,8 +131,8 @@ impl App {
     }
 
     fn current_notes(&self) -> Vec<&Note> {
-        if let Some(ids) = &self.override_ids {
-            return ids.iter().filter_map(|&id| self.store.get(id)).collect();
+        if let Some(state) = &self.override_state {
+            return state.ids.iter().filter_map(|&id| self.store.get(id)).collect();
         }
         match self.catalog {
             Catalog::Tags => self
@@ -142,7 +155,7 @@ impl App {
         if !self.selected.remove(&tag) {
             self.selected.insert(tag);
         }
-        self.override_ids = None;
+        self.override_state = None;
         self.reset_note_selection();
     }
 
@@ -160,7 +173,7 @@ impl App {
         } else {
             self.left_state.select(Some(0));
         }
-        self.override_ids = None;
+        self.override_state = None;
         self.reset_note_selection();
     }
 
@@ -176,7 +189,7 @@ impl App {
             .map(|i| (i + 1) % len)
             .unwrap_or(0);
         self.left_state.select(Some(i));
-        self.override_ids = None;
+        self.override_state = None;
         self.reset_note_selection();
     }
 
@@ -192,7 +205,7 @@ impl App {
             .map(|i| if i == 0 { len - 1 } else { i - 1 })
             .unwrap_or(0);
         self.left_state.select(Some(i));
-        self.override_ids = None;
+        self.override_state = None;
         self.reset_note_selection();
     }
 
@@ -246,9 +259,12 @@ impl App {
     fn run_fts(&mut self) {
         let q = self.fts_query.trim();
         if q.is_empty() {
-            self.override_ids = None;
+            self.override_state = None;
         } else {
-            self.override_ids = Some(self.fts.search_ids(q));
+            self.override_state = Some(Override {
+                kind: OverrideKind::Fts,
+                ids: self.fts.search_ids(q),
+            });
         }
         self.focus = Focus::Notes;
         self.reset_note_selection();
@@ -264,7 +280,28 @@ impl App {
             .map(|(i, _)| i)
             .collect();
         self.fts_query.clear();
-        self.override_ids = Some(ids);
+        self.override_state = Some(Override {
+            kind: OverrideKind::Errata,
+            ids,
+        });
+        self.focus = Focus::Notes;
+        self.reset_note_selection();
+    }
+
+    fn show_pending(&mut self) {
+        let ids: Vec<usize> = self
+            .store
+            .notes()
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.is_todo())
+            .map(|(i, _)| i)
+            .collect();
+        self.fts_query.clear();
+        self.override_state = Some(Override {
+            kind: OverrideKind::Pending,
+            ids,
+        });
         self.focus = Focus::Notes;
         self.reset_note_selection();
     }
@@ -274,7 +311,7 @@ impl App {
         self.catalog = Catalog::Glossary;
         self.filter.clear();
         self.fts_query.clear();
-        self.override_ids = None;
+        self.override_state = None;
         self.focus = Focus::Left;
         self.reset_left_selection();
         self.status.clear();
@@ -284,7 +321,7 @@ impl App {
         self.catalog = Catalog::Tags;
         self.filter.clear();
         self.fts_query.clear();
-        self.override_ids = None;
+        self.override_state = None;
         self.focus = Focus::Left;
         self.reset_left_selection();
         self.status.clear();
@@ -362,9 +399,10 @@ fn event_loop(
         match &app.mode {
             Mode::Browse => match key.code {
                 KeyCode::Char('q') => return Ok(()),
+                KeyCode::Char('h') | KeyCode::Char('?') => app.mode = Mode::Help,
                 KeyCode::Esc => {
-                    if app.override_ids.is_some() {
-                        app.override_ids = None;
+                    if app.override_state.is_some() {
+                        app.override_state = None;
                         app.fts_query.clear();
                         app.reset_note_selection();
                     } else if app.catalog == Catalog::Glossary {
@@ -391,6 +429,7 @@ fn event_loop(
                 KeyCode::Enter => app.open_detail(),
                 KeyCode::Char('y') => app.yank_selected(),
                 KeyCode::Char('e') => app.show_errata(),
+                KeyCode::Char('p') => app.show_pending(),
                 KeyCode::Char('g') => match app.catalog {
                     Catalog::Glossary => app.show_tags(),
                     Catalog::Tags => app.show_glossary(),
@@ -421,7 +460,7 @@ fn event_loop(
                 KeyCode::Esc => {
                     app.mode = Mode::Browse;
                     app.fts_query.clear();
-                    app.override_ids = None;
+                    app.override_state = None;
                     app.reset_note_selection();
                 }
                 KeyCode::Enter => {
@@ -457,6 +496,7 @@ fn event_loop(
                     _ => {}
                 }
             }
+            Mode::Help => app.mode = Mode::Browse,
         }
     }
 }
@@ -474,17 +514,11 @@ fn ui(f: &mut Frame, app: &mut App) {
     let status = match &app.mode {
         Mode::Browse => {
             if app.status.is_empty() {
-                let pick = match app.catalog {
-                    Catalog::Tags => "  space pick",
-                    Catalog::Glossary => "",
+                let focus = match app.focus {
+                    Focus::Left => app.left_label(),
+                    Focus::Notes => "notes",
                 };
-                format!(
-                    " j/k move{pick}  tab focus ({})  enter expand  y yank  / filter  f fts  g glossary  e errata  q quit ",
-                    match app.focus {
-                        Focus::Left => app.left_label(),
-                        Focus::Notes => "notes",
-                    }
-                )
+                format!(" {focus}   h help   q quit ")
             } else {
                 format!(" {} ", app.status)
             }
@@ -505,6 +539,7 @@ fn ui(f: &mut Frame, app: &mut App) {
                 format!(" {}  |  j/k scroll  y yank  enter/esc close ", app.status)
             }
         }
+        Mode::Help => " help — any key to close ".to_string(),
     };
     f.render_widget(Paragraph::new(status), chunks[0]);
 
@@ -527,6 +562,10 @@ fn ui(f: &mut Frame, app: &mut App) {
             render_detail(f, &note, scroll);
         }
     }
+
+    if matches!(app.mode, Mode::Help) {
+        render_help(f);
+    }
 }
 
 fn render_left(f: &mut Frame, app: &mut App, area: Rect) {
@@ -548,7 +587,7 @@ fn render_left(f: &mut Frame, app: &mut App, area: Rect) {
 
     let focused = app.focus == Focus::Left && matches!(app.mode, Mode::Browse);
     let label = app.left_label();
-    let title = if app.override_ids.is_some() {
+    let title = if app.override_state.is_some() {
         format!(" {label} (override) ")
     } else if focused {
         format!(" {label} * ")
@@ -577,8 +616,9 @@ fn render_notes(f: &mut Frame, app: &mut App, area: Rect) {
         .map(|n| {
             let kind = match &n.kind {
                 Kind::Fixme => "FIXME ".to_string(),
+                Kind::Todo => "TODO ".to_string(),
                 Kind::Define { term } => {
-                    if app.catalog == Catalog::Glossary && app.override_ids.is_none() {
+                    if app.catalog == Catalog::Glossary && app.override_state.is_none() {
                         String::new()
                     } else {
                         format!("def:{term} ")
@@ -592,19 +632,17 @@ fn render_notes(f: &mut Frame, app: &mut App, area: Rect) {
         .collect();
 
     let focused = app.focus == Focus::Notes && matches!(app.mode, Mode::Browse);
-    let title = match &app.override_ids {
-        Some(_) if app.fts_query.is_empty() => {
+    let title = match &app.override_state {
+        Some(state) => {
+            let label = match state.kind {
+                OverrideKind::Errata => "errata".to_string(),
+                OverrideKind::Pending => "pending".to_string(),
+                OverrideKind::Fts => format!("fts: {}", app.fts_query),
+            };
             if focused {
-                " notes (errata) * ".to_string()
+                format!(" notes ({label}) * ")
             } else {
-                " notes (errata) ".to_string()
-            }
-        }
-        Some(_) => {
-            if focused {
-                format!(" notes (fts: {}) * ", app.fts_query)
-            } else {
-                format!(" notes (fts: {}) ", app.fts_query)
+                format!(" notes ({label}) ")
             }
         }
         None => {
@@ -652,6 +690,7 @@ fn render_detail(f: &mut Frame, note: &Note, scroll: u16) {
     let title = match &note.kind {
         Kind::Define { term } => format!(" {term} "),
         Kind::Fixme => " FIXME ".to_string(),
+        Kind::Todo => " TODO ".to_string(),
         Kind::Note => " note ".to_string(),
     };
 
@@ -660,6 +699,66 @@ fn render_detail(f: &mut Frame, note: &Note, scroll: u16) {
         .scroll((scroll, 0))
         .block(Block::default().borders(Borders::ALL).title(title));
 
+    f.render_widget(paragraph, area);
+}
+
+fn render_help(f: &mut Frame) {
+    let area = centered_rect(74, 80, f.area());
+    f.render_widget(Clear, area);
+
+    let heading_style = Style::new().add_modifier(Modifier::BOLD);
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    for (heading, rows) in [
+        (
+            "Navigation",
+            &[
+                ("j / k  ↓ / ↑", "move the focused pane"),
+                ("tab", "switch focus: left ↔ notes"),
+                ("enter", "open detail  /  confirm"),
+                ("esc", "close overlay  /  cancel  /  back"),
+            ][..],
+        ),
+        (
+            "Catalog",
+            &[
+                ("g", "toggle tags ↔ glossary"),
+                ("/", "filter the left list"),
+                ("space", "toggle a tag pick (tags)"),
+            ][..],
+        ),
+        (
+            "Lists",
+            &[
+                ("e", "errata — show FIXMEs"),
+                ("p", "pending — show TODOs"),
+                ("f", "full-text search"),
+            ][..],
+        ),
+        (
+            "Other",
+            &[
+                ("y", "yank selected note to clipboard"),
+                ("h / ?", "this help"),
+                ("q", "quit"),
+            ][..],
+        ),
+    ] {
+        lines.push(Line::from(format!(" {heading}")).style(heading_style));
+        for (key, desc) in rows {
+            lines.push(Line::from(vec![
+                Span::raw("   "),
+                Span::raw(format!("{key:<14}")),
+                Span::raw(*desc),
+            ]));
+        }
+    }
+
+    let paragraph = Paragraph::new(lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" help (any key closes) "),
+    );
     f.render_widget(paragraph, area);
 }
 
@@ -745,4 +844,32 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+
+    #[test]
+    fn help_renders_all_sections() {
+        let backend = TestBackend::new(82, 26);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(render_help).unwrap();
+
+        let buf = terminal.backend().buffer();
+        let area = buf.area();
+        let (w, h) = (area.width as usize, area.height as usize);
+        let content = buf.content();
+        let rendered: String = (0..h)
+            .flat_map(|y| content[y * w..(y + 1) * w].iter())
+            .map(|c| c.symbol().chars().next().unwrap_or(' '))
+            .collect();
+
+        for needle in [
+            "Navigation", "Catalog", "Lists", "Other", "quit", "h / ?", "pending",
+        ] {
+            assert!(rendered.contains(needle), "help dialog missing {needle:?}");
+        }
+    }
 }

@@ -24,6 +24,7 @@ impl Formatter {
         let header = match &note.kind {
             Kind::Define { term } => format!("{}  {}", term.bold(), loc.dimmed()),
             Kind::Fixme => format!("{}  {}", "FIXME".red().bold(), loc.dimmed()),
+            Kind::Todo => format!("{}  {}", "TODO".yellow().bold(), loc.dimmed()),
             Kind::Note => loc.dimmed().to_string(),
         };
         writeln!(w, "{header}")?;

@@ -8,6 +8,7 @@ use std::path::PathBuf;
 pub enum Kind {
     Note,
     Fixme,
+    Todo,
     Define { term: String },
 }
 
@@ -23,6 +24,10 @@ pub struct Note {
 impl Note {
     pub fn is_fixme(&self) -> bool {
         matches!(self.kind, Kind::Fixme)
+    }
+
+    pub fn is_todo(&self) -> bool {
+        matches!(self.kind, Kind::Todo)
     }
 
     pub fn search_text(&self) -> String {

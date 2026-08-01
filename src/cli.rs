@@ -2,16 +2,19 @@ use clap::{Parser, Subcommand};
 
 const AFTER_HELP: &str = "\
 Note format:
-  Notes are HTML comments whose body starts with NOTE or FIXME.
+  Notes are HTML comments whose body starts with NOTE, FIXME, or TODO.
 
   Plain note (optional #tags):
     <!-- NOTE Spot is a dog. #character #bio -->
 
   Definition (def | define | definition + term + gloss):
-    <!-- NOTE def spearsheaves a tax taken from the crop. -->
+    <!-- NOTE def spearsheaves a tax taken directly from the crop. -->
 
   Errata:
     <!-- FIXME timeline broken in ch. 4 #plot -->
+
+  Pending:
+    <!-- TODO rewrite the prologue #draft -->
 
   Trailing #tags at the end of a note are hidden in display but still
   searchable. In-text tags (e.g. the #character arc) stay in the text.
@@ -26,8 +29,9 @@ Note format:
     version,
     about = "Search and browse inline notes in text files",
     long_about = "Search and browse inline notes embedded as HTML comments in text files.\n\n\
-Notes use <!-- NOTE ... --> and <!-- FIXME ... --> so editors can highlight them. \
-Tag with #tags, define terms with NOTE def|define|definition, and collect errata via FIXME.\n\n\
+Notes use <!-- NOTE ... -->, <!-- FIXME ... -->, and <!-- TODO ... --> so editors can highlight them. \
+Tag with #tags, define terms with NOTE def|define|definition, collect errata via FIXME, and \
+track pending work via TODO.\n\n\
 Configuration is per working directory (a scan glob). There is no on-disk note cache; \
 files are rescanned on each run. Full-text search loads only for the TUI or search -f.",
     after_help = AFTER_HELP
@@ -53,9 +57,11 @@ pub enum Command {
     Search(Search),
     /// List all FIXME (errata) notes
     Errata,
+    /// List all TODO (pending) notes
+    Pending,
     /// Pretty-print the full glossary of definitions
     Glossary,
-    /// Pretty-print every note (notes, definitions, and FIXMEs)
+    /// Pretty-print every note (notes, definitions, FIXMEs, and TODOs)
     All,
     /// Open the interactive tag browser (default when no command is given)
     Tui,

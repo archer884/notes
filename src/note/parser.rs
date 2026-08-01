@@ -41,6 +41,8 @@ impl Parser {
 
         let (kind, text) = if eq_ignore_ascii_case(kind_label, "FIXME") {
             (Kind::Fixme, rest.trim().to_string())
+        } else if eq_ignore_ascii_case(kind_label, "TODO") {
+            (Kind::Todo, rest.trim().to_string())
         } else if eq_ignore_ascii_case(kind_label, "NOTE") {
             if let Some(cx) = self.define.captures(rest.trim()) {
                 let term = cx
@@ -101,7 +103,8 @@ fn extract_tags(pattern: &Regex, text: &str) -> Vec<String> {
             let raw = cx.get(0)?.as_str();
             let tag = raw
                 .trim_start_matches('#')
-                .trim_end_matches(|u: char| !u.is_ascii_alphanumeric());
+                .trim_end_matches(|u: char| !u.is_ascii_alphanumeric())
+                .trim_end_matches("'s");
             if tag.is_empty() {
                 None
             } else {
@@ -153,6 +156,15 @@ mod tests {
         assert_eq!(n.kind, Kind::Fixme);
         assert_eq!(n.tags, vec!["plot"]);
         assert!(n.text.contains("timeline"));
+    }
+
+    #[test]
+    fn parses_todo() {
+        let n = parse_one("<!-- TODO rewrite the prologue #draft -->");
+        assert_eq!(n.kind, Kind::Todo);
+        assert!(n.is_todo());
+        assert_eq!(n.tags, vec!["draft"]);
+        assert!(n.text.contains("prologue"));
     }
 
     #[test]
@@ -222,5 +234,11 @@ mod tests {
     fn tag_casing_preserved() {
         let n = parse_one("<!-- NOTE hero of the #Empire. #Foo_Bar -->");
         assert_eq!(n.tags, vec!["Empire", "Foo_Bar"]);
+    }
+
+    #[test]
+    fn tag_possessive_stripped() {
+        let n = parse_one("<!-- NOTE met #Aria's kin, #mothers' pride, and #Bo's. -->");
+        assert_eq!(n.tags, vec!["Aria", "mothers", "Bo"]);
     }
 }

@@ -26,12 +26,13 @@ Comments matched by `(?s)<!--\s*(.*?)\s*-->`.
 Body must begin with keyword:
 
 1. **`FIXME`** → `Kind::Fixme`, rest is text.
-2. **`NOTE`** then optional define form:
+2. **`TODO`** → `Kind::Todo`, rest is text.
+3. **`NOTE`** then optional define form:
    - `(?i)^(?:def|define|definition)\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s+(.+)$` → `Kind::Define { term }` (term retains original casing), gloss = text. Term may be a bare word or a `"..."` / `'...'`-quoted phrase; quotes are stripped and not stored. The store keys its `by_term` index by the lowercased term so lookups are case-insensitive.
    - else → `Kind::Note`.
 3. Anything else → ignored.
 
-Tags: `#\S+`, trailing non-alphanumeric stripped from tag name; original casing kept on `Note.tags`. Store indexes `by_tag` under `normalize_tag` (trim, strip `#`, spaces→`_`, lowercase) so lookup is case- and space/underscore-insensitive; `tags()` returns first-seen original forms, deduped by that key.
+Tags: `#\S+`, trailing non-alphanumeric stripped from tag name; a trailing `'s` (possessive, e.g. `#Aria's`) is also dropped (after the non-alphanumeric pass, so `#mothers'` → `mothers` via the `'` rule and `#Aria's` → `Aria` via the `'s` rule). Original casing kept on `Note.tags`. Store indexes `by_tag` under `normalize_tag` (trim, strip `#`, spaces→`_`, lowercase) so lookup is case- and space/underscore-insensitive; `tags()` returns first-seen original forms, deduped by that key.
 
 Source path + 1-based line number recorded on each `Note`.
 
@@ -66,7 +67,7 @@ preview/detail do not wrap (they scroll).
 ## Store indexes
 
 - `notes: Vec<Note>`
-- `by_tag`, `by_term`, `fixmes` → indices into `notes`
+- `by_tag`, `by_term`, `fixmes`, `todos` → indices into `notes`
 - Load: `glob(pattern)` → parse each file → `push`
 
 `glossary()` returns all defines sorted by term.
@@ -84,12 +85,13 @@ Doc id = note index as string. Query via `memory_indexer::InMemoryIndex`.
 - Glossary catalog: cursor-selected term drives the notes pane (unchanged single-select).
 - Focus: Left | Notes (`tab`); `j`/`k` move focused pane.
 - `enter` → detail overlay (scroll, yank). Preview pane always shows selection.
-- `e` / FTS results set `override_ids` on the notes pane.
+- `e` / FTS results set `override_ids` on the notes pane. `e` = errata (FIXMEs), `p` = pending (TODOs); the override carries an `OverrideKind` (`Fts` / `Errata` / `Pending`) that drives the notes-pane title label.
+- `h` or `?` opens a centered help overlay (`Mode::Help`) listing all keybinds; any key dismisses. The bottom status bar no longer enumerates keybinds — it shows the focused pane plus `h help  q quit` (or a transient `status` message).
 - Clipboard yank: `arboard`.
 
 ## CLI commands
 
-`config`, `define`, `search` (`-f`), `errata`, `glossary`, `all`, `tui`  
+`config`, `define`, `search` (`-f`), `errata` (FIXMEs), `pending` (TODOs), `glossary`, `all`, `tui`  
 Default (no subcommand) → TUI.
 
 `all` pretty-prints every note in scan order via `Formatter::fmt_notes`.

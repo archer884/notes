@@ -14,6 +14,7 @@ pub struct NoteStore {
     by_tag: HashMap<String, Vec<usize>>,
     by_term: HashMap<String, Vec<usize>>,
     fixmes: Vec<usize>,
+    todos: Vec<usize>,
 }
 
 impl NoteStore {
@@ -65,6 +66,10 @@ impl NoteStore {
 
         if note.is_fixme() {
             self.fixmes.push(id);
+        }
+
+        if note.is_todo() {
+            self.todos.push(id);
         }
 
         self.notes.push(note);
@@ -145,6 +150,10 @@ impl NoteStore {
 
     pub fn errata(&self) -> Vec<&Note> {
         self.fixmes.iter().map(|&id| &self.notes[id]).collect()
+    }
+
+    pub fn todos(&self) -> Vec<&Note> {
+        self.todos.iter().map(|&id| &self.notes[id]).collect()
     }
 
     /// All definitions, sorted by term.

@@ -32,6 +32,7 @@ fn run(args: Args) -> Result<()> {
         Some(Command::Define(cmd)) => cmd_define(cmd),
         Some(Command::Search(cmd)) => cmd_search(cmd),
         Some(Command::Errata) => cmd_errata(),
+        Some(Command::Pending) => cmd_pending(),
         Some(Command::Glossary) => cmd_glossary(),
         Some(Command::All) => cmd_all(),
     }
@@ -93,6 +94,17 @@ fn cmd_errata() -> Result<()> {
     let notes = store.errata();
     if notes.is_empty() {
         eprintln!("no FIXME notes");
+        return Ok(());
+    }
+    Formatter::new().fmt_notes(io::stdout().lock(), &notes)?;
+    Ok(())
+}
+
+fn cmd_pending() -> Result<()> {
+    let store = load_store()?;
+    let notes = store.todos();
+    if notes.is_empty() {
+        eprintln!("no TODO notes");
         return Ok(());
     }
     Formatter::new().fmt_notes(io::stdout().lock(), &notes)?;
