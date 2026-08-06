@@ -32,7 +32,7 @@ Body must begin with keyword:
    - else → `Kind::Note`.
 3. Anything else → ignored.
 
-Tags: `#\S+`, trailing non-alphanumeric stripped from tag name; a trailing `'s` (possessive, e.g. `#Aria's`) is also dropped (after the non-alphanumeric pass, so `#mothers'` → `mothers` via the `'` rule and `#Aria's` → `Aria` via the `'s` rule). Original casing kept on `Note.tags`. Store indexes `by_tag` under `normalize_tag` (trim, strip `#`, spaces→`_`, lowercase) so lookup is case- and space/underscore-insensitive; `tags()` returns first-seen original forms, deduped by that key.
+Tags: `#\S+`, trailing non-alphanumeric stripped from tag name; a trailing `'s` (possessive, e.g. `#Aria's`) is also dropped (after the non-alphanumeric pass, so `#mothers'` → `mothers` via the `'` rule and `#Aria's` → `Aria` via the `'s` rule). Original casing kept on `Note.tags`. Store indexes `by_tag` under `normalize_tag` (trim, strip `#`, spaces→`_`, lowercase) so lookup is case- and space/underscore-insensitive; `tags()` returns first-seen original forms, deduped by that key. A `Define` note's term is implicitly also a tag: the store indexes the note under `normalize_tag(term)` and surfaces the term in `tags()`, so a definition is reachable from the tags browser / `search` without an explicit `#term`. `note.tags` itself stays the explicit `#tags` only; the term-as-tag policy lives in the store (`tag_keys`, `tags()`).
 
 Source path + 1-based line number recorded on each `Note`.
 

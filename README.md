@@ -30,6 +30,9 @@ See Spot run. <!-- NOTE Spot is a dog. #character #bio -->
 - After `NOTE`, use `def`, `define`, or `definition`.
 - Next token is the **term**; the rest is the **gloss**.
 - Space-separated only (no `define:term`).
+- The term is **also treated as a tag** automatically: a definition for `foo`
+  shows up under tag `foo` (in `notes search foo` and the TUI tags browser)
+  even with no `#foo` written.
 - Definitions appear in `notes define` and `notes glossary`.
 
 ### Errata (FIXME)

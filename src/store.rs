@@ -50,11 +50,8 @@ impl NoteStore {
     fn push(&mut self, note: Note) {
         let id = self.notes.len();
 
-        for tag in &note.tags {
-            self.by_tag
-                .entry(normalize_tag(tag))
-                .or_default()
-                .push(id);
+        for key in tag_keys(&note) {
+            self.by_tag.entry(key).or_default().push(id);
         }
 
         if let Kind::Define { term } = &note.kind {
@@ -86,6 +83,11 @@ impl NoteStore {
             for tag in &note.tags {
                 if seen.insert(normalize_tag(tag)) {
                     tags.push(tag.as_str());
+                }
+            }
+            if let Kind::Define { term } = &note.kind {
+                if seen.insert(normalize_tag(term)) {
+                    tags.push(term.as_str());
                 }
             }
         }
@@ -192,6 +194,19 @@ fn normalize_tag(tag: &str) -> String {
         .to_ascii_lowercase()
 }
 
+/// Normalized tag keys for a note: the explicit `#tags` plus the defined term
+/// (if any), deduped so the note is indexed once per key.
+fn tag_keys(note: &Note) -> Vec<String> {
+    let mut keys: Vec<String> = note.tags.iter().map(|t| normalize_tag(t)).collect();
+    if let Kind::Define { term } = &note.kind {
+        let k = normalize_tag(term);
+        if !keys.contains(&k) {
+            keys.push(k);
+        }
+    }
+    keys
+}
+
 fn normalize_term(term: &str) -> String {
     term.trim().to_ascii_lowercase()
 }
@@ -279,6 +294,59 @@ mod tests {
     fn define_lookup_miss() {
         let store = store_with(vec![define_note("blue bear", "a large mammal.")]);
         assert!(store.define("red fox").is_empty());
+    }
+
+    #[test]
+    fn define_term_searchable_as_tag() {
+        let store = store_with(vec![define_note("spearsheaves", "a tax.")]);
+        let found = store.search_tag("spearsheaves");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].text, "a tax.");
+    }
+
+    #[test]
+    fn define_term_multiword_searchable_as_tag() {
+        let store = store_with(vec![define_note("blue bear", "a large mammal.")]);
+        for query in ["blue bear", "blue_bear", "Blue Bear"] {
+            assert_eq!(
+                store.search_tag(query).len(),
+                1,
+                "query {query:?} should hit the define note"
+            );
+        }
+    }
+
+    #[test]
+    fn define_term_appears_in_tags_list() {
+        let store = store_with(vec![
+            define_note("spearsheaves", "a tax."),
+            define_note("Blue Bear", "a mammal."),
+        ]);
+        assert_eq!(store.tags(), vec!["Blue Bear", "spearsheaves"]);
+    }
+
+    #[test]
+    fn define_term_dedupes_with_explicit_tag() {
+        let note = Note {
+            path: PathBuf::from("t.md"),
+            line: 1,
+            kind: Kind::Define { term: "foo".into() },
+            tags: vec!["foo".into()],
+            text: "the gloss".into(),
+        };
+        let store = store_with(vec![note]);
+        assert_eq!(store.search_tag("foo").len(), 1);
+        assert_eq!(store.search_tags(&["foo".to_string()]).len(), 1);
+    }
+
+    #[test]
+    fn define_term_links_explicitly_tagged_notes() {
+        let store = store_with(vec![
+            define_note("foo", "a definition"),
+            tagged_note("a note about it", &["foo"]),
+        ]);
+        let found = store.search_tag("foo");
+        assert_eq!(found.len(), 2);
     }
 
     #[test]
